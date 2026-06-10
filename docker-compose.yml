@@ -1,0 +1,62 @@
+services:
+  app:
+    build: .
+    container_name: ezlearning-app
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - DATABASE_URL=jdbc:postgresql://db:5432/ezlearning
+      - DATABASE_USER=ezlearning
+      - DATABASE_PASSWORD=ezlearning
+      - REDIS_HOST=cache
+      - JWT_SECRET=${JWT_SECRET}
+      - REASONING_API_URL=${REASONING_API_URL}
+      - REASONING_API_KEY=${REASONING_API_KEY}
+      - MEDIA_API_URL=${MEDIA_API_URL}
+      - MEDIA_API_KEY=${MEDIA_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    container_name: ezlearning-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=ezlearning
+      - POSTGRES_USER=ezlearning
+      - POSTGRES_PASSWORD=ezlearning
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ezlearning"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  cache:
+    image: redis:7-alpine
+    container_name: ezlearning-cache
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

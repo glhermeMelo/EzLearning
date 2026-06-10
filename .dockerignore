@@ -1,0 +1,12 @@
+target/
+.git/
+.gitignore
+.settings/
+.vscode/
+.idea/
+*.iml
+*.md
+.DS_Store
+docker-compose.yml
+.env
+.env.example
