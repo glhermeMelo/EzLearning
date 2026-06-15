@@ -51,6 +51,4 @@ docker-compose.override.yml
 *.log
 
 ### Opencode ###
-.opencode
 .github
-docs
