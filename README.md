@@ -23,6 +23,7 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 - US010 -- Infraestrutura (Docker, health check, estrutura base): concluida
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
+- US009B -- Integracao API de geracao de midias: concluida
 
 ## Pre-requisitos
 
@@ -68,29 +69,39 @@ src/main/java/com/ezlearning/
     CorsConfig.java              # Configuracao CORS
     SecurityConfig.java          # Seguranca, JWT filter, BCrypt
     JwtAuthenticationFilter.java # Filtro de autenticacao JWT
+    RestTemplateConfig.java      # Configuracao do RestTemplate (timeouts)
   controller/
     AuthController.java          # Endpoints /api/auth/*
     HealthController.java        # Endpoint /actuator/health
+    MediaController.java         # Endpoints /api/media/*
     UploadController.java        # Endpoints /api/uploads/*
     UploadExceptionHandler.java  # Tratamento de erros de upload
+  integration/
+    MediaApiClient.java          # Cliente HTTP resiliente para API externa de midias
   service/
     AuthService.java             # Interface de autenticacao
     AuthServiceImpl.java         # Implementacao (registro, login, refresh)
     JwtService.java              # Geracao e validacao de tokens JWT
+    MediaService.java            # Interface de geracao de midias
+    MediaServiceImpl.java        # Implementacao (geracao, cache Redis, fallback BD)
     UploadService.java           # Interface de upload
     UploadServiceImpl.java       # Implementacao (upload, thumbnail)
   repository/
-    UserRepository.java
+    GeneratedMediaRepository.java # Repositorio de midias geradas
     UploadedImageRepository.java
+    UserRepository.java
   model/
-    User.java                    # Entidade users
+    GeneratedMedia.java          # Entidade generated_media
     UploadedImage.java           # Entidade uploaded_images
+    User.java                    # Entidade users
     dto/
-      RegisterRequest.java
+      ErrorResponse.java
       LoginRequest.java
       LoginResponse.java
+      MediaGenerationRequest.java  # DTO de requisicao de geracao
+      MediaGenerationResponse.java # DTO de resposta de geracao
+      RegisterRequest.java
       UploadResponse.java
-      ErrorResponse.java
   EzLearningApplication.java
 
 src/main/resources/
@@ -172,6 +183,44 @@ src/main/resources/
 **Restricoes:**
 - Formatos aceitos: `image/jpeg`, `image/png`
 - Tamanho maximo: 5MB
+
+### Geracao de Midias
+
+| Metodo | Rota                  | Descricao                            | Autenticacao |
+|--------|-----------------------|--------------------------------------|--------------|
+| POST   | `/api/media/generate` | Gera imagem a partir de prompt textual | Sim          |
+| GET    | `/api/media/{id}`     | Serve imagem gerada                  | Sim          |
+
+**Generate Request:**
+```json
+{
+  "prompt": "um diagrama de classes UML",
+  "style": "colorido",
+  "diagramType": "flowchart",
+  "options": {
+    "theme": "dark",
+    "resolution": "1920x1080"
+  }
+}
+```
+
+**Generate Response:**
+```json
+{
+  "id": "uuid",
+  "url": "/api/media/{id}",
+  "thumbnailUrl": null,
+  "originalName": "um diagrama de classes UML",
+  "size": 12345,
+  "mimeType": "image/png"
+}
+```
+
+**Comportamento:**
+- O prompt e hasheado (SHA-256) para servir como chave de cache no Redis
+- Em caso de erro na API externa, busca no banco de dados (fallback)
+- A imagem gerada e armazenada em `uploads/diagrams/{uuid}.png`
+- Midias nao referenciadas sao removidas apos 1 hora (limpeza agendada)
 
 ### Documentacao Interativa
 

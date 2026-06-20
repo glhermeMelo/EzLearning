@@ -27,7 +27,7 @@ public class UploadController {
     }
 
     @PostMapping
-    public ResponseEntity<UploadResponse> upload(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<UploadResponse> upload(@RequestParam("file") MultipartFile file) throws IOException {
         var image = uploadService.upload(file, null);
         var response = new UploadResponse(
                 image.getId(),
