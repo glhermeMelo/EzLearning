@@ -24,6 +24,7 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
 - US009B -- Integracao API de geracao de midias: concluida
+- US009A -- Integracao API de raciocinio logico: concluida
 
 ## Pre-requisitos
 
@@ -70,20 +71,25 @@ src/main/java/com/ezlearning/
     SecurityConfig.java          # Seguranca, JWT filter, BCrypt
     JwtAuthenticationFilter.java # Filtro de autenticacao JWT
     RestTemplateConfig.java      # Configuracao do RestTemplate (timeouts)
+    AiApiProperties.java         # Properties de configuracao da API de raciocinio
   controller/
     AuthController.java          # Endpoints /api/auth/*
     HealthController.java        # Endpoint /actuator/health
     MediaController.java         # Endpoints /api/media/*
+    ReasoningController.java     # Endpoint /api/chat/reason
     UploadController.java        # Endpoints /api/uploads/*
     UploadExceptionHandler.java  # Tratamento de erros de upload
   integration/
     MediaApiClient.java          # Cliente HTTP resiliente para API externa de midias
+    ReasoningApiClient.java      # Cliente HTTP resiliente para API de raciocinio
   service/
     AuthService.java             # Interface de autenticacao
     AuthServiceImpl.java         # Implementacao (registro, login, refresh)
     JwtService.java              # Geracao e validacao de tokens JWT
     MediaService.java            # Interface de geracao de midias
     MediaServiceImpl.java        # Implementacao (geracao, cache Redis, fallback BD)
+    ReasoningService.java        # Interface de raciocinio
+    ReasoningServiceImpl.java    # Implementacao (orquestracao, parsing)
     UploadService.java           # Interface de upload
     UploadServiceImpl.java       # Implementacao (upload, thumbnail)
   repository/
@@ -92,6 +98,7 @@ src/main/java/com/ezlearning/
     UserRepository.java
   model/
     GeneratedMedia.java          # Entidade generated_media
+    ReasoningResponse.java       # Entidade (DTO) de resposta do raciocinio
     UploadedImage.java           # Entidade uploaded_images
     User.java                    # Entidade users
     dto/
@@ -100,6 +107,8 @@ src/main/java/com/ezlearning/
       LoginResponse.java
       MediaGenerationRequest.java  # DTO de requisicao de geracao
       MediaGenerationResponse.java # DTO de resposta de geracao
+      ReasoningApiResponse.java    # DTO de resposta bruta da API externa
+      ReasoningRequest.java        # DTO de requisicao de raciocinio
       RegisterRequest.java
       UploadResponse.java
   EzLearningApplication.java
@@ -221,6 +230,38 @@ src/main/resources/
 - Em caso de erro na API externa, busca no banco de dados (fallback)
 - A imagem gerada e armazenada em `uploads/diagrams/{uuid}.png`
 - Midias nao referenciadas sao removidas apos 1 hora (limpeza agendada)
+
+### Raciocinio
+
+| Metodo | Rota                 | Descricao                            | Autenticacao |
+|--------|----------------------|--------------------------------------|--------------|
+| POST   | `/api/chat/reason`   | Envia pergunta e recebe resposta com raciocinio | Sim |
+
+**Reason Request:**
+```json
+{
+  "question": "Como resolver uma equacao de segundo grau?",
+  "context": "ax^2 + bx + c = 0 (opcional)"
+}
+```
+
+**Reason Response:**
+```json
+{
+  "answer": "Para resolver uma equacao de segundo grau, use a formula de Bhaskara...",
+  "steps": [
+    "Identifique os coeficientes a, b e c",
+    "Calcule o discriminante: Δ = b² - 4ac",
+    "Aplique a formula: x = (-b ± √Δ) / 2a"
+  ],
+  "confidence": 0.95
+}
+```
+
+**Comportamento:**
+- Cliente HTTP resiliente com retry (3 tentativas, backoff exponencial 1s/2s/4s)
+- Timeout configurado em 30s para leitura
+- Erros 4xx sao lancados sem retry; 5xx e timeout disparam retry
 
 ### Documentacao Interativa
 
