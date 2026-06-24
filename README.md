@@ -23,14 +23,15 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 ## Status
 
 - US010 -- Infraestrutura (Docker, health check, estrutura base): concluida
-- US009A -- API de raciocinio (integracao com Gemini, chat com raciocinio logico): concluida
-- US009B -- Geracao de midias (Gemini, diagramas, cache): concluida
-- US009C -- Comunicacao em tempo real (WebSocket/SSE, rate limiting Redis): concluida
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
+- US009A -- API de raciocinio (integracao com Gemini, chat com raciocinio logico): concluida
+- US009B -- Geracao de midias (Gemini, diagramas, cache Redis + banco): concluida
+- US009C -- Comunicacao em tempo real (WebSocket/SSE, rate limiting Redis): concluida
 - US005 -- Sintese de audio (Kokoro TTS): concluida
+- US006 -- Exportacao PDF (Apache PDFBox, cabecalho + pergunta + resposta com passos + diagramas, cache SHA-256): concluida
 
-**Testes:** 53 testes passando (JDK 21 + Maven).
+**Testes:** 59 testes passando (JDK 21 + Maven), 0 falhas, 0 erros.
 
 ## Pre-requisitos
 
@@ -97,7 +98,7 @@ Edite o arquivo `.env` e preencha as seguintes variaveis obrigatorias:
 - `REASONING_API_KEY` -- chave da API Google Gemini (raciocinio)
 - `MEDIA_API_KEY` -- chave da API Google Gemini (geracao de midias)
 
-> **Nota:** Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave** do Google Gemini, ja que ambos os servicos utilizam a API Gemini. Obtenha sua chave gratuitamente em https://aistudio.google.com/apikey.
+> **Nota:** Apenas **1 chave externa** e necessaria: a chave do Google Gemini (gratuita em https://aistudio.google.com/apikey). Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave**, ja que ambos os servicos utilizam a API Gemini. O Kokoro TTS roda localmente via Docker e nao requer chave.
 
 ### 5. Build o backend (necessario antes do Docker Compose se quiser imagem local)
 
@@ -177,6 +178,7 @@ src/main/java/com/ezlearning/
     UploadController.java        # Endpoints /api/uploads/*
     UploadExceptionHandler.java  # Tratamento de erros de upload
     TtsController.java           # Endpoints /api/tts/*
+    PdfExportController.java     # Endpoint /api/chat/{messageId}/export
   integration/
     MediaApiClient.java          # Cliente HTTP resiliente para API externa de midias
     ReasoningApiClient.java      # Cliente HTTP resiliente para API de raciocinio
@@ -193,6 +195,8 @@ src/main/java/com/ezlearning/
     TtsServiceImpl.java          # Implementacao (Kokoro TTS)
     UploadService.java           # Interface de upload
     UploadServiceImpl.java       # Implementacao (upload, thumbnail)
+    PdfExportService.java        # Interface de exportacao PDF
+    PdfExportServiceImpl.java    # Implementacao (Apache PDFBox, cache SHA-256)
   websocket/
     ChatWebSocketHandler.java    # Handler de mensagens WebSocket
     JwtHandshakeInterceptor.java # Interceptor JWT no handshake WebSocket
@@ -212,9 +216,10 @@ src/main/java/com/ezlearning/
       LoginRequest.java
       LoginResponse.java
       MediaGenerationRequest.java  # DTO de requisicao de geracao
+      MediaGenerationResponse.java # DTO de resposta de geracao
       MediaRequest.java            # DTO de requisicao de diagrama
       MediaResponse.java           # DTO de resposta de diagrama
-      MediaGenerationResponse.java # DTO de resposta de geracao
+      PdfExportRequest.java        # DTO de requisicao de exportacao PDF
       ReasoningApiResponse.java    # DTO de resposta bruta da API externa
       ReasoningRequest.java        # DTO de requisicao de raciocinio
       ReasoningResponse.java       # DTO de resposta do raciocinio
@@ -425,6 +430,36 @@ src/main/resources/
 ```
 
 Voice padrao: `af_heart`. Vozes alternativas: `am_michelle`, `af_bella`.
+
+### Exportacao PDF
+
+| Metodo | Rota                            | Descricao                                  | Autenticacao |
+|--------|---------------------------------|--------------------------------------------|--------------|
+| POST   | `/api/chat/{messageId}/export`  | Exporta duvida + resposta em PDF           | Sim          |
+
+**Export Request (POST /api/chat/{messageId}/export):**
+```json
+{
+  "question": "Como resolver uma equacao de segundo grau?",
+  "context": "ax^2 + bx + c = 0",
+  "answer": "Para resolver, use a formula de Bhaskara...",
+  "steps": [
+    "Identifique os coeficientes a, b e c",
+    "Calcule o discriminante: Delta = b^2 - 4ac",
+    "Aplique a formula: x = (-b +- sqrt(Delta)) / 2a"
+  ],
+  "confidence": 0.95,
+  "mediaIds": ["uuid-do-diagrama"]
+}
+```
+
+**Export Response:** `application/pdf` (binary) com `Content-Disposition: attachment; filename="duvida-YYYY-MM-DD.pdf"`
+
+**Comportamento:**
+- Gera PDF A4 com cabecalho (titulo + data), secao de pergunta, resposta com passos numerados e diagramas embutidos
+- Cache interno por hash SHA-256 do conteudo (evita regeneracao)
+- `mediaIds` opcional: lista de UUIDs de diagramas para embutir no PDF
+- Diagramas sao carregados via `MediaService` e escalados para no maximo 500px de largura
 
 ### Comunicacao em Tempo Real
 
