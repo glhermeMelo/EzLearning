@@ -2,8 +2,10 @@ package com.ezlearning.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "app.api.reasoning")
+@ConfigurationProperties(prefix = "app.api")
 public record AiApiProperties(
-    String url,
-    String key
-) {}
+    ApiInfo reasoning,
+    ApiInfo media
+) {
+    public record ApiInfo(String url, String key) {}
+}

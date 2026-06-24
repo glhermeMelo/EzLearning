@@ -23,6 +23,7 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 ## Status
 
 - US010 -- Infraestrutura (Docker, health check, estrutura base): concluida
+- US009A -- API de raciocinio (integracao com Gemini, chat com raciocinio logico): concluida
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
 
@@ -77,7 +78,7 @@ src/main/java/com/ezlearning/
     AuthController.java          # Endpoints /api/auth/*
     HealthController.java        # Endpoint /actuator/health
     MediaController.java         # Endpoints /api/media/*
-    ReasoningController.java     # Endpoint /api/chat/reason
+    ChatController.java          # Endpoint /api/chat/reason
     UploadController.java        # Endpoints /api/uploads/*
     UploadExceptionHandler.java  # Tratamento de erros de upload
   integration/
@@ -99,7 +100,6 @@ src/main/java/com/ezlearning/
     UserRepository.java
   model/
     GeneratedMedia.java          # Entidade generated_media
-    ReasoningResponse.java       # Entidade (DTO) de resposta do raciocinio
     UploadedImage.java           # Entidade uploaded_images
     User.java                    # Entidade users
     dto/
@@ -110,6 +110,7 @@ src/main/java/com/ezlearning/
       MediaGenerationResponse.java # DTO de resposta de geracao
       ReasoningApiResponse.java    # DTO de resposta bruta da API externa
       ReasoningRequest.java        # DTO de requisicao de raciocinio
+      ReasoningResponse.java       # DTO de resposta do raciocinio
       RegisterRequest.java
       UploadResponse.java
   EzLearningApplication.java

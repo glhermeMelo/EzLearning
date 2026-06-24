@@ -1,13 +1,13 @@
 package com.ezlearning.service;
 
 import com.ezlearning.integration.ReasoningApiClient;
-import com.ezlearning.model.dto.ReasoningApiResponse;
 import com.ezlearning.model.dto.ReasoningRequest;
 import com.ezlearning.model.dto.ReasoningResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -31,20 +31,40 @@ public class ReasoningServiceImpl implements ReasoningService {
                 request.question().length(),
                 request.context() != null && !request.context().isBlank());
 
-        ReasoningApiResponse apiResponse = reasoningApiClient.sendReasoningRequest(request);
+        ReasoningResponse raw = reasoningApiClient.ask(request);
 
-        log.debug("Reasoning API responded - confidence: {}, steps: {}",
-                apiResponse.confidence(),
-                apiResponse.steps() != null ? apiResponse.steps().size() : 0);
-
-        return mapToResponse(apiResponse);
+        return parseMarkdown(raw.answer());
     }
 
-    private ReasoningResponse mapToResponse(ReasoningApiResponse apiResponse) {
-        String answer = apiResponse.answer() != null ? apiResponse.answer() : "";
-        List<String> steps = apiResponse.steps() != null ? apiResponse.steps() : List.of();
-        double confidence = apiResponse.confidence() != null ? apiResponse.confidence() : 0.0;
+    @Override
+    public ReasoningResponse askQuestion(String question, String context) {
+        return reason(new ReasoningRequest(question, context));
+    }
 
-        return new ReasoningResponse(answer, steps, confidence);
+    private ReasoningResponse parseMarkdown(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            return new ReasoningResponse("", List.of(), 0.0);
+        }
+
+        String[] lines = markdown.split("\n");
+        List<String> steps = new ArrayList<>();
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.matches("^\\d+\\.\\s+.*") || trimmed.startsWith("**")) {
+                steps.add(trimmed);
+            }
+        }
+
+        double confidence = calculateConfidence(markdown, steps);
+
+        return new ReasoningResponse(markdown, steps, confidence);
+    }
+
+    private double calculateConfidence(String answer, List<String> steps) {
+        double score = 0.5;
+        score += Math.min(0.25, steps.size() * 0.05);
+        score += Math.min(0.2, answer.length() / 5000.0 * 0.2);
+        return Math.min(0.95, score);
     }
 }

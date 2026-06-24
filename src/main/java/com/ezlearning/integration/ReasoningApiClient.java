@@ -1,140 +1,74 @@
 package com.ezlearning.integration;
 
 import com.ezlearning.config.AiApiProperties;
-import com.ezlearning.model.dto.ReasoningApiResponse;
 import com.ezlearning.model.dto.ReasoningRequest;
+import com.ezlearning.model.dto.ReasoningResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
-import java.util.Map;
+import java.util.List;
 
 @Component
 public class ReasoningApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(ReasoningApiClient.class);
 
-    private static final int MAX_RETRIES = 3;
-    private static final long INITIAL_BACKOFF_MS = 1000;
-
-    private final RestTemplate restTemplate;
-    private final String apiUrl;
+    private final RestClient restClient;
     private final String apiKey;
 
     public ReasoningApiClient(
-            @Qualifier("reasoningRestTemplate") RestTemplate restTemplate,
+            @Qualifier("reasoningRestClient") RestClient restClient,
             AiApiProperties properties) {
-        this.restTemplate = restTemplate;
-        this.apiUrl = properties.url();
-        this.apiKey = properties.key();
+        this.restClient = restClient;
+        this.apiKey = properties.reasoning().key();
     }
 
-    /**
-     * Envia uma pergunta para a API de raciocínio externa, com retry e backoff.
-     *
-     * @param request a pergunta e contexto opcional
-     * @return resposta estruturada da API
-     * @throws IllegalArgumentException se a API retornar erro ou exceder tentativas
-     */
-    public ReasoningApiResponse sendReasoningRequest(ReasoningRequest request) {
-        var headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
+    public ReasoningResponse ask(ReasoningRequest request) {
+        String prompt = request.context() != null && !request.context().isBlank()
+                ? request.context() + "\n\n" + request.question()
+                : request.question();
 
-        var body = Map.of(
-            "question", request.question(),
-            "context", request.context() != null ? request.context() : ""
-        );
+        var geminiRequest = new GeminiRequest(List.of(
+                new GeminiRequest.Content(List.of(new GeminiRequest.Part(prompt)))
+        ));
 
-        var entity = new HttpEntity<>(body, headers);
+        log.debug("Sending request to Gemini API");
 
-        String url = apiUrl + (apiUrl.endsWith("/") ? "reason" : "/reason");
+        var geminiResponse = restClient.post()
+                .uri("?key={key}", apiKey)
+                .body(geminiRequest)
+                .retrieve()
+                .body(GeminiResponse.class);
 
-        log.debug("Calling reasoning API at {}", apiUrl);
+        String markdown = extractText(geminiResponse);
 
-        RuntimeException lastException = null;
+        log.debug("Received response from Gemini API ({} chars)", markdown.length());
 
-        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                ResponseEntity<ReasoningApiResponse> response = restTemplate.exchange(
-                        url,
-                        HttpMethod.POST,
-                        entity,
-                        ReasoningApiResponse.class
-                );
-
-                var apiResponse = response.getBody();
-
-                if (apiResponse == null) {
-                    throw new IllegalArgumentException("Resposta vazia da API de raciocínio");
-                }
-
-                if (apiResponse.error() != null && !apiResponse.error().isBlank()) {
-                    throw new IllegalArgumentException("Erro da API de raciocínio: " + apiResponse.error());
-                }
-
-                log.debug("Reasoning API call succeeded on attempt {}", attempt);
-                return apiResponse;
-
-            } catch (HttpClientErrorException e) {
-                if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS && attempt < MAX_RETRIES) {
-                    log.warn("Rate limited by reasoning API (attempt {}/{})", attempt, MAX_RETRIES);
-                    lastException = e;
-                    backoff(attempt);
-                    continue;
-                }
-                if (e.getStatusCode().is4xxClientError()) {
-                    var message = String.format("Erro %d na API de raciocínio: %s",
-                            e.getStatusCode().value(), e.getResponseBodyAsString());
-                    log.error(message);
-                    throw new IllegalArgumentException(message);
-                }
-                lastException = e;
-                if (attempt < MAX_RETRIES) {
-                    backoff(attempt);
-                }
-
-            } catch (HttpServerErrorException e) {
-                log.warn("Server error from reasoning API (attempt {}/{}): {}",
-                        attempt, MAX_RETRIES, e.getStatusCode());
-                lastException = e;
-                if (attempt < MAX_RETRIES) {
-                    backoff(attempt);
-                }
-
-            } catch (ResourceAccessException e) {
-                log.warn("Timeout connecting to reasoning API (attempt {}/{}): {}",
-                        attempt, MAX_RETRIES, e.getMessage());
-                lastException = e;
-                if (attempt < MAX_RETRIES) {
-                    backoff(attempt);
-                }
-            }
-        }
-
-        throw new IllegalArgumentException(
-                "Falha ao comunicar com API de raciocínio após " + MAX_RETRIES + " tentativas: "
-                        + lastException.getMessage());
+        return new ReasoningResponse(markdown, List.of(), 0.0);
     }
 
-    private void backoff(int attempt) {
-        long delay = INITIAL_BACKOFF_MS * (long) Math.pow(2, attempt - 1);
-        try {
-            Thread.sleep(delay);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new IllegalArgumentException("Requisição interrompida durante backoff", ie);
+    private String extractText(GeminiResponse response) {
+        if (response == null || response.candidates() == null || response.candidates().isEmpty()) {
+            throw new IllegalArgumentException("Resposta vazia da API Gemini");
         }
+        var parts = response.candidates().getFirst().content().parts();
+        if (parts == null || parts.isEmpty()) {
+            throw new IllegalArgumentException("Resposta sem conteúdo da API Gemini");
+        }
+        return parts.getFirst().text();
+    }
+
+    public record GeminiRequest(List<Content> contents) {
+        public record Content(List<Part> parts) {}
+        public record Part(String text) {}
+    }
+
+    public record GeminiResponse(List<Candidate> candidates) {
+        public record Candidate(Content content) {}
+        public record Content(List<Part> parts) {}
+        public record Part(String text) {}
     }
 }
