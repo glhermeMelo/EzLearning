@@ -25,10 +25,12 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 - US010 -- Infraestrutura (Docker, health check, estrutura base): concluida
 - US009A -- API de raciocinio (integracao com Gemini, chat com raciocinio logico): concluida
 - US009B -- Geracao de midias (Gemini, diagramas, cache): concluida
+- US009C -- Comunicacao em tempo real (WebSocket/SSE, rate limiting Redis): concluida
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
+- US005 -- Sintese de audio (Kokoro TTS): concluida
 
-**Testes:** 38 testes passando (JDK 21 + Maven).
+**Testes:** 53 testes passando (JDK 21 + Maven).
 
 ## Pre-requisitos
 
@@ -165,6 +167,8 @@ src/main/java/com/ezlearning/
     JwtAuthenticationFilter.java # Filtro de autenticacao JWT
     RestTemplateConfig.java      # Configuracao do RestTemplate (timeouts)
     AiApiProperties.java         # Properties de configuracao da API de raciocinio
+    WebSocketConfig.java         # Configuracao WebSocket/STOMP
+    RateLimitingInterceptor.java # Interceptor de rate limiting (Redis)
   controller/
     AuthController.java          # Endpoints /api/auth/*
     HealthController.java        # Endpoint /actuator/health
@@ -172,9 +176,11 @@ src/main/java/com/ezlearning/
     ChatController.java          # Endpoint /api/chat/reason
     UploadController.java        # Endpoints /api/uploads/*
     UploadExceptionHandler.java  # Tratamento de erros de upload
+    TtsController.java           # Endpoints /api/tts/*
   integration/
     MediaApiClient.java          # Cliente HTTP resiliente para API externa de midias
     ReasoningApiClient.java      # Cliente HTTP resiliente para API de raciocinio
+    TtsApiClient.java            # Cliente HTTP para Kokoro TTS
   service/
     AuthService.java             # Interface de autenticacao
     AuthServiceImpl.java         # Implementacao (registro, login, refresh)
@@ -183,8 +189,14 @@ src/main/java/com/ezlearning/
     MediaServiceImpl.java        # Implementacao (geracao, cache Redis, fallback BD)
     ReasoningService.java        # Interface de raciocinio
     ReasoningServiceImpl.java    # Implementacao (orquestracao, parsing)
+    TtsService.java              # Interface de sintese de audio
+    TtsServiceImpl.java          # Implementacao (Kokoro TTS)
     UploadService.java           # Interface de upload
     UploadServiceImpl.java       # Implementacao (upload, thumbnail)
+  websocket/
+    ChatWebSocketHandler.java    # Handler de mensagens WebSocket
+    JwtHandshakeInterceptor.java # Interceptor JWT no handshake WebSocket
+    UserChannelInterceptor.java  # Interceptor de canal para usuario
   repository/
     GeneratedMediaRepository.java # Repositorio de midias geradas
     UploadedImageRepository.java
@@ -194,6 +206,8 @@ src/main/java/com/ezlearning/
     UploadedImage.java           # Entidade uploaded_images
     User.java                    # Entidade users
     dto/
+      ChatMessageRequest.java
+      ChatStreamEvent.java
       ErrorResponse.java
       LoginRequest.java
       LoginResponse.java
@@ -205,6 +219,8 @@ src/main/java/com/ezlearning/
       ReasoningRequest.java        # DTO de requisicao de raciocinio
       ReasoningResponse.java       # DTO de resposta do raciocinio
       RegisterRequest.java
+      TtsRequest.java
+      TtsResponse.java
       UploadResponse.java
   EzLearningApplication.java
 
@@ -383,6 +399,62 @@ src/main/resources/
 - Cliente HTTP resiliente com retry (3 tentativas, backoff exponencial 1s/2s/4s)
 - Timeout configurado em 30s para leitura
 - Erros 4xx sao lancados sem retry; 5xx e timeout disparam retry
+
+### Sintese de Audio
+
+| Metodo | Rota                  | Descricao                     | Autenticacao |
+|--------|-----------------------|--------------------------------|--------------|
+| POST   | `/api/tts/synthesize` | Sintetiza texto em audio WAV  | Sim          |
+| GET    | `/api/tts/{id}`       | Serve arquivo de audio        | Sim          |
+
+**Synthesize Request (POST /api/tts/synthesize):**
+```json
+{
+  "text": "Texto para sintetizar",
+  "voice": "af_heart"
+}
+```
+
+**Synthesize Response:**
+```json
+{
+  "audioUrl": "/api/tts/{uuid}",
+  "durationSeconds": 0.0,
+  "format": "wav"
+}
+```
+
+Voice padrao: `af_heart`. Vozes alternativas: `am_michelle`, `af_bella`.
+
+### Comunicacao em Tempo Real
+
+| Metodo | Rota                                   | Descricao                              | Autenticacao |
+|--------|----------------------------------------|----------------------------------------|--------------|
+| GET    | `/api/chat/stream?question=&context=`  | SSE streaming de raciocinio            | Sim          |
+| WS     | `/ws` (STOMP over SockJS)              | WebSocket para chat em tempo real      | Sim (token via query param) |
+
+**SSE Events:**
+```
+event: thinking
+data: {"type": "thinking"}
+
+event: result
+data: {"type": "result", "data": {"answer": "...", "steps": [], "confidence": 0.0}}
+
+event: complete
+data: {"type": "complete"}
+```
+
+**WebSocket:**
+- Conectar em `/ws` com `?token={jwt}`
+- Enviar para `/app/chat`: `{"question": "...", "context": "..."}`
+- Receber eventos em `/topic/chat/{userId}`
+
+### Rate Limiting
+
+- Maximo 5 requisicoes/minuto por usuario (WebSocket e SSE)
+- Implementado com Redis (contador com TTL de 60s)
+- Resposta 429 ou evento de erro quando excedido
 
 ### Documentacao Interativa
 
