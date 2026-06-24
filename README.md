@@ -479,8 +479,8 @@ data: {"type": "complete"}
 
 ## APIs Externas
 
-| API            | Finalidade                          | Provedor    | Autenticacao             |
-|----------------|-------------------------------------|-------------|--------------------------|
-| Gemini (flash) | Raciocinio logico (raciocinio)      | Google      | API Key (Bearer token)   |
-| Gemini (flash) | Geracao de midias (imagens/diagramas)| Google      | API Key (Bearer token)   |
-| Kokoro TTS     | Sintese de voz (texto para audio)   | Kokoro      | Nao requerida (Docker local) |
+| API            | Finalidade                          | Provedor    | URL                                                     | Autenticacao             |
+|----------------|-------------------------------------|-------------|---------------------------------------------------------|--------------------------|
+| Gemini (flash) | Raciocinio logico (raciocinio)      | Google      | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | API Key (query param) |
+| Gemini (flash) | Geracao de midias (imagens/diagramas)| Google      | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | API Key (query param) |
+| Kokoro TTS     | Sintese de voz (texto para audio)   | Kokoro      | `http://localhost:5050/v1/audio/speech` (Docker local)  | Nao requerida            |
