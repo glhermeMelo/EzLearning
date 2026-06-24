@@ -24,6 +24,7 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 
 - US010 -- Infraestrutura (Docker, health check, estrutura base): concluida
 - US009A -- API de raciocinio (integracao com Gemini, chat com raciocinio logico): concluida
+- US009B -- Geracao de midias (Gemini, diagramas, cache): concluida
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
 
@@ -107,6 +108,8 @@ src/main/java/com/ezlearning/
       LoginRequest.java
       LoginResponse.java
       MediaGenerationRequest.java  # DTO de requisicao de geracao
+      MediaRequest.java            # DTO de requisicao de diagrama
+      MediaResponse.java           # DTO de resposta de diagrama
       MediaGenerationResponse.java # DTO de resposta de geracao
       ReasoningApiResponse.java    # DTO de resposta bruta da API externa
       ReasoningRequest.java        # DTO de requisicao de raciocinio
@@ -197,12 +200,14 @@ src/main/resources/
 
 ### Geracao de Midias
 
-| Metodo | Rota                  | Descricao                            | Autenticacao |
-|--------|-----------------------|--------------------------------------|--------------|
-| POST   | `/api/media/generate` | Gera imagem a partir de prompt textual | Sim          |
-| GET    | `/api/media/{id}`     | Serve imagem gerada                  | Sim          |
+| Metodo | Rota                       | Descricao                                 | Autenticacao |
+|--------|----------------------------|-------------------------------------------|--------------|
+| POST   | `/api/media/generate`      | Gera imagem a partir de prompt textual    | Sim          |
+| POST   | `/api/media/diagram`       | Gera diagrama a partir de prompt textual  | Sim          |
+| GET    | `/api/media/{id}`          | Serve o conteudo binario da midia gerada  | Sim          |
+| GET    | `/api/media/{id}/image`    | Serve a imagem PNG do diagrama            | Sim          |
 
-**Generate Request:**
+**Generate Request (POST /api/media/generate):**
 ```json
 {
   "prompt": "um diagrama de classes UML",
@@ -227,11 +232,35 @@ src/main/resources/
 }
 ```
 
+**Diagram Request (POST /api/media/diagram):**
+```json
+{
+  "prompt": "diagrama de arquitetura em camadas"
+}
+```
+
+**Diagram Response:**
+```json
+{
+  "id": "uuid",
+  "description": "/api/media/{id}",
+  "imageUrl": "/api/media/{id}/image"
+}
+```
+
 **Comportamento:**
 - O prompt e hasheado (SHA-256) para servir como chave de cache no Redis
 - Em caso de erro na API externa, busca no banco de dados (fallback)
-- A imagem gerada e armazenada em `uploads/diagrams/{uuid}.png`
+- A midia gerada e armazenada em `uploads/diagrams/{uuid}.md`
+- A imagem PNG extraida e armazenada em `uploads/diagrams/{uuid}.png`
 - Midias nao referenciadas sao removidas apos 1 hora (limpeza agendada)
+
+### Midias/Diagramas
+
+| Metodo | Rota                | Descricao                   | Autenticacao |
+|--------|---------------------|-----------------------------|--------------|
+| POST   | `/api/media/diagram`| Gera diagrama               | Sim          |
+| GET    | `/api/media/{id}`   | Serve arquivo de midia      | Sim          |
 
 ### Raciocinio
 

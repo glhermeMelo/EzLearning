@@ -4,6 +4,8 @@ import com.ezlearning.integration.MediaApiClient;
 import com.ezlearning.model.GeneratedMedia;
 import com.ezlearning.model.dto.MediaGenerationRequest;
 import com.ezlearning.model.dto.MediaGenerationResponse;
+import com.ezlearning.model.dto.MediaRequest;
+import com.ezlearning.model.dto.MediaResponse;
 import com.ezlearning.repository.GeneratedMediaRepository;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -11,9 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -23,15 +23,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Base64;
 import java.util.HexFormat;
-import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class MediaServiceImpl implements MediaService {
@@ -42,6 +40,7 @@ public class MediaServiceImpl implements MediaService {
     private static final Duration CACHE_TTL = Duration.ofHours(24);
     private static final long CLEANUP_AGE_HOURS = 1;
     private static final String DIAGRAMS_SUBDIR = "diagrams";
+    private static final Pattern IMAGE_URL_PATTERN = Pattern.compile("!\\[.*?\\]\\((.*?)\\)");
 
     private final MediaApiClient mediaApiClient;
     private final GeneratedMediaRepository repository;
@@ -73,23 +72,20 @@ public class MediaServiceImpl implements MediaService {
     public MediaGenerationResponse generateMedia(MediaGenerationRequest request, UUID userId) {
         var promptHash = hashPrompt(request.prompt());
 
-        // 1. Verificar cache no Redis
         var cachedId = redisTemplate.opsForValue().get(CACHE_PREFIX + promptHash);
         if (cachedId != null) {
             try {
                 var uuid = UUID.fromString(cachedId);
                 var existing = repository.findById(uuid);
                 if (existing.isPresent()) {
-                    var media = existing.get();
                     log.debug("Cache hit for prompt hash: {}", promptHash);
-                    return buildResponse(media);
+                    return buildResponse(existing.get());
                 }
             } catch (IllegalArgumentException e) {
                 log.warn("Invalid cached UUID for hash {}: {}", promptHash, cachedId);
             }
         }
 
-        // 2. Verificar cache no banco (fallback)
         var existingByHash = repository.findByPromptHash(promptHash);
         if (existingByHash.isPresent()) {
             var media = existingByHash.get();
@@ -98,26 +94,70 @@ public class MediaServiceImpl implements MediaService {
             return buildResponse(media);
         }
 
-        // 3. Chamar API externa
-        Map<String, Object> apiResponse;
+        var enhancedPrompt = buildEnhancedPrompt(request);
+
+        String markdown;
         try {
-            apiResponse = mediaApiClient.generateImage(request);
+            markdown = mediaApiClient.generateDiagram(enhancedPrompt);
         } catch (Exception e) {
             log.error("Failed to call media API for prompt: {}", request.prompt(), e);
             throw new IllegalArgumentException("Falha ao gerar imagem: serviço de mídia indisponível");
         }
 
-        if (apiResponse == null || apiResponse.isEmpty()) {
+        if (markdown == null || markdown.isBlank()) {
             throw new IllegalArgumentException("Falha ao gerar imagem: resposta vazia da API");
         }
 
-        // 4. Processar resposta (URL ou base64)
-        GeneratedMedia media = processApiResponse(apiResponse, request.prompt(), promptHash, userId);
+        GeneratedMedia media = saveMarkdownMedia(markdown, request.prompt(), promptHash, userId);
 
-        // 5. Cache no Redis
         redisTemplate.opsForValue().set(CACHE_PREFIX + promptHash, media.getId().toString(), CACHE_TTL);
 
         return buildResponse(media);
+    }
+
+    @Override
+    public MediaResponse generateDiagram(MediaRequest request) {
+        var promptHash = hashPrompt(request.prompt());
+
+        var cachedId = redisTemplate.opsForValue().get(CACHE_PREFIX + promptHash);
+        if (cachedId != null) {
+            try {
+                var uuid = UUID.fromString(cachedId);
+                var existing = repository.findById(uuid);
+                if (existing.isPresent()) {
+                    log.debug("Cache hit for diagram prompt hash: {}", promptHash);
+                    return buildDiagramResponse(existing.get());
+                }
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid cached UUID for hash {}: {}", promptHash, cachedId);
+            }
+        }
+
+        var existingByHash = repository.findByPromptHash(promptHash);
+        if (existingByHash.isPresent()) {
+            var media = existingByHash.get();
+            log.debug("Database cache hit for diagram prompt hash: {}", promptHash);
+            redisTemplate.opsForValue().set(CACHE_PREFIX + promptHash, media.getId().toString(), CACHE_TTL);
+            return buildDiagramResponse(media);
+        }
+
+        String markdown;
+        try {
+            markdown = mediaApiClient.generateDiagram(request.prompt());
+        } catch (Exception e) {
+            log.error("Failed to generate diagram for prompt: {}", request.prompt(), e);
+            throw new IllegalArgumentException("Falha ao gerar diagrama: serviço de mídia indisponível");
+        }
+
+        if (markdown == null || markdown.isBlank()) {
+            throw new IllegalArgumentException("Falha ao gerar diagrama: resposta vazia da API");
+        }
+
+        GeneratedMedia media = saveMarkdownMedia(markdown, request.prompt(), promptHash, null);
+
+        redisTemplate.opsForValue().set(CACHE_PREFIX + promptHash, media.getId().toString(), CACHE_TTL);
+
+        return buildDiagramResponse(media);
     }
 
     @Override
@@ -125,11 +165,17 @@ public class MediaServiceImpl implements MediaService {
         var media = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Mídia não encontrada: " + id));
 
-        // Atualizar último acesso
         media.setLastAccessedAt(LocalDateTime.now());
         repository.save(media);
 
         return Files.readAllBytes(Paths.get(uploadDir, media.getStoredPath()));
+    }
+
+    @Override
+    public String getMimeType(UUID id) {
+        return repository.findById(id)
+                .map(GeneratedMedia::getMimeType)
+                .orElse("application/octet-stream");
     }
 
     @Override
@@ -150,7 +196,9 @@ public class MediaServiceImpl implements MediaService {
                 var filePath = Paths.get(uploadDir, media.getStoredPath());
                 Files.deleteIfExists(filePath);
 
-                // Remover do cache Redis
+                var imagePath = Paths.get(uploadDir, DIAGRAMS_SUBDIR, media.getId() + ".png");
+                Files.deleteIfExists(imagePath);
+
                 redisTemplate.delete(CACHE_PREFIX + media.getPromptHash());
 
                 repository.delete(media);
@@ -161,47 +209,27 @@ public class MediaServiceImpl implements MediaService {
         }
     }
 
-    // ========== Métodos internos ==========
-
-    private GeneratedMedia processApiResponse(Map<String, Object> response,
-                                               String prompt,
-                                               String promptHash,
-                                               UUID userId) {
+    private GeneratedMedia saveMarkdownMedia(String markdown, String prompt, String promptHash, UUID userId) {
         var id = UUID.randomUUID();
-        var fileName = id + ".png";
+        var fileName = id + ".md";
         var storedPath = DIAGRAMS_SUBDIR + "/" + fileName;
         var targetPath = diagramsDir.resolve(fileName);
 
         try {
-            // Verificar se a resposta contém URL
-            var urlObj = response.get("url");
-            if (urlObj instanceof String url && !url.isBlank()) {
-                downloadImage(url, targetPath);
-                var size = Files.size(targetPath);
-                return repository.save(new GeneratedMedia(prompt, promptHash, storedPath, "image/png", size, userId));
+            Files.writeString(targetPath, markdown, StandardCharsets.UTF_8);
+            var size = Files.size(targetPath);
+
+            var matcher = IMAGE_URL_PATTERN.matcher(markdown);
+            if (matcher.find()) {
+                var imageUrl = matcher.group(1);
+                if (!imageUrl.isBlank()) {
+                    downloadImage(imageUrl, diagramsDir.resolve(id + ".png"));
+                }
             }
 
-            // Verificar se a resposta contém base64
-            var base64Obj = response.get("base64");
-            if (base64Obj instanceof String base64 && !base64.isBlank()) {
-                var imageBytes = decodeBase64(base64);
-                Files.write(targetPath, imageBytes);
-                var size = Files.size(targetPath);
-                return repository.save(new GeneratedMedia(prompt, promptHash, storedPath, "image/png", size, userId));
-            }
-
-            // Verificar se a resposta contém data (outro formato comum)
-            var dataObj = response.get("data");
-            if (dataObj instanceof String data && !data.isBlank()) {
-                var imageBytes = decodeBase64(data);
-                Files.write(targetPath, imageBytes);
-                var size = Files.size(targetPath);
-                return repository.save(new GeneratedMedia(prompt, promptHash, storedPath, "image/png", size, userId));
-            }
-
-            throw new IllegalArgumentException("Formato de resposta não suportado. Esperado 'url' ou 'base64'.");
+            return repository.save(new GeneratedMedia(prompt, promptHash, storedPath, "text/markdown", size, userId));
         } catch (IOException e) {
-            throw new IllegalArgumentException("Erro ao processar imagem gerada: " + e.getMessage());
+            throw new IllegalArgumentException("Erro ao processar diagrama gerado: " + e.getMessage());
         }
     }
 
@@ -231,17 +259,15 @@ public class MediaServiceImpl implements MediaService {
         }
     }
 
-    private byte[] decodeBase64(String base64) {
-        try {
-            // Remover prefixo data:image if present
-            String data = base64;
-            if (data.contains(",")) {
-                data = data.substring(data.indexOf(',') + 1);
-            }
-            return Base64.getDecoder().decode(data.trim());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Base64 inválido na resposta da API");
+    private String buildEnhancedPrompt(MediaGenerationRequest request) {
+        var sb = new StringBuilder(request.prompt());
+        if (request.diagramType() != null && !request.diagramType().isBlank()) {
+            sb.append("\n\nDiagram type: ").append(request.diagramType());
         }
+        if (request.style() != null && !request.style().isBlank()) {
+            sb.append("\nStyle: ").append(request.style());
+        }
+        return sb.toString();
     }
 
     private MediaGenerationResponse buildResponse(GeneratedMedia media) {
@@ -255,6 +281,12 @@ public class MediaServiceImpl implements MediaService {
                 media.getSize(),
                 media.getMimeType()
         );
+    }
+
+    private MediaResponse buildDiagramResponse(GeneratedMedia media) {
+        var imagePath = diagramsDir.resolve(media.getId() + ".png");
+        var imageUrl = Files.exists(imagePath) ? "/api/media/" + media.getId() + "/image" : null;
+        return new MediaResponse(media.getId(), "/api/media/" + media.getId(), imageUrl);
     }
 
     static String hashPrompt(String prompt) {

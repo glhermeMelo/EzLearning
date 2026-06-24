@@ -1,67 +1,68 @@
 package com.ezlearning.integration;
 
-import com.ezlearning.model.dto.MediaGenerationRequest;
+import com.ezlearning.config.AiApiProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
-import java.util.Map;
+import java.util.List;
 
 @Component
 public class MediaApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(MediaApiClient.class);
 
-    private final RestTemplate restTemplate;
-    private final String apiUrl;
+    private final RestClient restClient;
     private final String apiKey;
 
     public MediaApiClient(
-            @Qualifier("mediaRestTemplate") RestTemplate restTemplate,
-            @Value("${app.api.media.url}") String apiUrl,
-            @Value("${app.api.media.key}") String apiKey) {
-        this.restTemplate = restTemplate;
-        this.apiUrl = apiUrl;
-        this.apiKey = apiKey;
+            @Qualifier("mediaRestClient") RestClient restClient,
+            AiApiProperties properties) {
+        this.restClient = restClient;
+        this.apiKey = properties.media().key();
     }
 
-    /**
-     * Chama a API externa de geração de mídia com o prompt fornecido.
-     *
-     * @param request o pedido de geração contendo prompt e opções
-     * @return mapa com a resposta da API (contendo "url" ou "base64")
-     */
-    public Map<String, Object> generateImage(MediaGenerationRequest request) {
-        var headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
+    public String generateDiagram(String prompt) {
+        var geminiRequest = new GeminiRequest(List.of(
+                new GeminiRequest.Content(List.of(new GeminiRequest.Part(prompt)))
+        ));
 
-        var body = Map.of(
-            "prompt", request.prompt(),
-            "style", request.style() != null ? request.style() : "default",
-            "diagram_type", request.diagramType() != null ? request.diagramType() : "",
-            "options", request.options() != null ? request.options() : Map.of()
-        );
+        log.debug("Sending diagram generation request to Gemini API");
 
-        var entity = new HttpEntity<>(body, headers);
+        var geminiResponse = restClient.post()
+                .uri("?key={key}", apiKey)
+                .body(geminiRequest)
+                .retrieve()
+                .body(GeminiResponse.class);
 
-        log.debug("Calling media API at {} with prompt: {}", apiUrl, request.prompt());
+        String markdown = extractText(geminiResponse);
 
-        ResponseEntity<Map> response = restTemplate.exchange(
-            apiUrl + "/generate",
-            HttpMethod.POST,
-            entity,
-            Map.class
-        );
+        log.debug("Received diagram response from Gemini API ({} chars)", markdown.length());
 
-        return response.getBody();
+        return markdown;
+    }
+
+    private String extractText(GeminiResponse response) {
+        if (response == null || response.candidates() == null || response.candidates().isEmpty()) {
+            throw new IllegalArgumentException("Resposta vazia da API Gemini");
+        }
+        var parts = response.candidates().getFirst().content().parts();
+        if (parts == null || parts.isEmpty()) {
+            throw new IllegalArgumentException("Resposta sem conteúdo da API Gemini");
+        }
+        return parts.getFirst().text();
+    }
+
+    public record GeminiRequest(List<Content> contents) {
+        public record Content(List<Part> parts) {}
+        public record Part(String text) {}
+    }
+
+    public record GeminiResponse(List<Candidate> candidates) {
+        public record Candidate(Content content) {}
+        public record Content(List<Part> parts) {}
+        public record Part(String text) {}
     }
 }

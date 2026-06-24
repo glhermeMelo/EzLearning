@@ -2,6 +2,8 @@ package com.ezlearning.controller;
 
 import com.ezlearning.model.dto.MediaGenerationRequest;
 import com.ezlearning.model.dto.MediaGenerationResponse;
+import com.ezlearning.model.dto.MediaRequest;
+import com.ezlearning.model.dto.MediaResponse;
 import com.ezlearning.service.MediaService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.UUID;
 
 @RestController
@@ -37,9 +41,30 @@ public class MediaController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/diagram")
+    public ResponseEntity<MediaResponse> generateDiagram(
+            @Valid @RequestBody MediaRequest request) {
+        var response = mediaService.generateDiagram(request);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<byte[]> serveMedia(@PathVariable UUID id) throws IOException {
         var data = mediaService.loadMedia(id);
+        var mimeType = mediaService.getMimeType(id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+                .contentType(MediaType.parseMediaType(mimeType))
+                .body(data);
+    }
+
+    @GetMapping("/{id}/image")
+    public ResponseEntity<byte[]> serveImage(@PathVariable UUID id) throws IOException {
+        var imagePath = Paths.get("uploads", "diagrams", id + ".png");
+        if (!Files.exists(imagePath)) {
+            return ResponseEntity.notFound().build();
+        }
+        var data = Files.readAllBytes(imagePath);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + id + ".png\"")
                 .contentType(MediaType.IMAGE_PNG)
