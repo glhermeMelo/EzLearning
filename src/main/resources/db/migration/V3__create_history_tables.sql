@@ -4,7 +4,7 @@ CREATE TABLE chat_messages (
     question TEXT NOT NULL,
     answer TEXT NOT NULL,
     confidence DOUBLE PRECISION NOT NULL DEFAULT 0.0,
-    steps TEXT,
+    steps JSONB,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
