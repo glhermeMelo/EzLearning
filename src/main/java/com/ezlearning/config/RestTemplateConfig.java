@@ -51,4 +51,15 @@ public class RestTemplateConfig {
                 .requestFactory(factory)
                 .build();
     }
+
+    @Bean
+    public RestClient ttsRestClient() {
+        var factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(60_000);
+        factory.setReadTimeout(60_000);
+        return RestClient.builder()
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .requestFactory(factory)
+                .build();
+    }
 }

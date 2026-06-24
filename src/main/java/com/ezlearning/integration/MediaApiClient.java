@@ -6,7 +6,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.List;
 
 @Component
@@ -31,8 +33,9 @@ public class MediaApiClient {
 
         log.debug("Sending diagram generation request to Gemini API");
 
+        URI uri = UriComponentsBuilder.fromUriString("?key={key}").build(apiKey);
         var geminiResponse = restClient.post()
-                .uri("?key={key}", apiKey)
+                .uri(uri)
                 .body(geminiRequest)
                 .retrieve()
                 .body(GeminiResponse.class);
