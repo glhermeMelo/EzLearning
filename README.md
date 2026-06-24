@@ -32,10 +32,94 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 
 ## Pre-requisitos
 
-- Java 21 (Temurin ou OpenJDK)
-- Docker + Docker Compose (para ambiente completo)
-- Maven 3.9.9 (instalado em `%USERPROFILE%\Tools\apache-maven-3.9.9`)
-- NVIDIA GPU (para Kokoro TTS via Docker)
+- Debian 13 (ou similar)
+- Docker Engine + Docker Compose (veja Setup abaixo)
+- NVIDIA GPU com drivers proprietarios (para Kokoro TTS)
+- Java 21 JDK (para compilar localmente, via `apt install openjdk-21-jdk`)
+- Maven 3.9+ (opcional, ou use ./mvnw)
+- Chave de API Google Gemini (gratuita em https://aistudio.google.com/apikey)
+
+## Setup no Debian 13
+
+Guia passo a passo para configurar o ambiente do zero em uma maquina Debian 13 (baseado em Bookworm).
+
+### 1. Instalar Docker Engine
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable docker
+sudo usermod -aG docker $USER
+```
+
+> **Importante:** E necessario reiniciar a sessao (logout/login) ou reiniciar a maquina para que o grupo `docker` tenha efeito.
+
+### 2. Instalar NVIDIA Container Toolkit (para RTX 3060)
+
+```bash
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt update
+sudo apt install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+### 3. Verificar GPU
+
+Confirme que o Docker consegue acessar a GPU:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.6.2-base-ubuntu22.04 nvidia-smi
+```
+
+Se o comando acima exibir as informacoes da GPU (RTX 3060), a configuracao foi bem-sucedida.
+
+### 4. Criar arquivo .env
+
+```bash
+cp .env.example .env
+```
+
+Edite o arquivo `.env` e preencha as seguintes variaveis obrigatorias:
+
+- `JWT_SECRET` -- chave secreta para assinar os tokens JWT. Gere uma com:
+  ```bash
+  openssl rand -base64 64
+  ```
+- `REASONING_API_KEY` -- chave da API Google Gemini (raciocinio)
+- `MEDIA_API_KEY` -- chave da API Google Gemini (geracao de midias)
+
+> **Nota:** Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave** do Google Gemini, ja que ambos os servicos utilizam a API Gemini. Obtenha sua chave gratuitamente em https://aistudio.google.com/apikey.
+
+### 5. Build o backend (necessario antes do Docker Compose se quiser imagem local)
+
+```bash
+./mvnw clean package -DskipTests
+```
+
+Ou, se tiver o Maven instalado globalmente:
+
+```bash
+mvn clean package -DskipTests
+```
+
+### 6. Subir tudo
+
+```bash
+docker compose up -d
+```
+
+Apos a execucao, os servicos estarao disponiveis em:
+
+- **App:** http://localhost:8080
+- **Swagger UI:** http://localhost:8080/swagger-ui.html
+- **Kokoro TTS:** http://localhost:5050
 
 ## Como Executar
 
