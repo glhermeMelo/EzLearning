@@ -44,7 +44,7 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 
 ## Setup no Debian 13
 
-Guia passo a passo para configurar o ambiente do zero em uma maquina Debian 13 (baseado em Bookworm).
+Guia passo a passo para configurar o ambiente do zero em uma maquina Debian 13.
 
 ### 1. Instalar Docker Engine
 
@@ -53,7 +53,7 @@ sudo apt update
 sudo apt install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo systemctl enable docker
@@ -62,7 +62,49 @@ sudo usermod -aG docker $USER
 
 > **Importante:** E necessario reiniciar a sessao (logout/login) ou reiniciar a maquina para que o grupo `docker` tenha efeito.
 
-### 2. Instalar NVIDIA Container Toolkit (para RTX 3060)
+### 2. Instalar o driver NVIDIA
+
+O Debian 13 nao inclui drivers proprietarios NVIDIA por padrao. E necessario habilitar os repositorios `non-free` antes de instalar.
+
+#### 2.1. Habilitar repositorios non-free
+
+Edite o arquivo `/etc/apt/sources.list`:
+
+```bash
+sudo nano /etc/apt/sources.list
+```
+
+Garanta que as linhas contenham `contrib non-free non-free-firmware`:
+
+```
+deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
+```
+
+#### 2.2. Instalar o driver
+
+```bash
+sudo apt update
+sudo apt install -y nvidia-driver firmware-misc-nonfree
+```
+
+#### 2.3. Reiniciar (obrigatorio)
+
+```bash
+sudo reboot
+```
+
+#### 2.4. Verificar instalacao
+
+Apos reiniciar, confirme que o driver foi carregado corretamente:
+
+```bash
+nvidia-smi
+```
+
+A saida deve exibir informacoes da GPU (modelo, driver version, CUDA version). Se o comando nao for encontrado ou retornar erro, o driver nao foi instalado corretamente -- revise os passos anteriores.
+
+### 3. Instalar NVIDIA Container Toolkit
 
 ```bash
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
@@ -73,7 +115,7 @@ sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
 
-### 3. Verificar GPU
+### 4. Verificar GPU no Docker
 
 Confirme que o Docker consegue acessar a GPU:
 
@@ -81,9 +123,9 @@ Confirme que o Docker consegue acessar a GPU:
 docker run --rm --gpus all nvidia/cuda:12.6.2-base-ubuntu22.04 nvidia-smi
 ```
 
-Se o comando acima exibir as informacoes da GPU (RTX 3060), a configuracao foi bem-sucedida.
+Se o comando exibir as informacoes da GPU, a configuracao foi bem-sucedida.
 
-### 4. Criar arquivo .env
+### 5. Criar arquivo .env
 
 ```bash
 cp .env.example .env
@@ -100,7 +142,7 @@ Edite o arquivo `.env` e preencha as seguintes variaveis obrigatorias:
 
 > **Nota:** Apenas **1 chave externa** e necessaria: a chave do Google Gemini (gratuita em https://aistudio.google.com/apikey). Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave**, ja que ambos os servicos utilizam a API Gemini. O Kokoro TTS roda localmente via Docker e nao requer chave.
 
-### 5. Build o backend (necessario antes do Docker Compose se quiser imagem local)
+### 6. Build do backend
 
 ```bash
 ./mvnw clean package -DskipTests
@@ -112,7 +154,7 @@ Ou, se tiver o Maven instalado globalmente:
 mvn clean package -DskipTests
 ```
 
-### 6. Subir tudo
+### 7. Subir tudo
 
 ```bash
 docker compose up -d
@@ -202,7 +244,7 @@ src/main/java/com/ezlearning/
     JwtHandshakeInterceptor.java # Interceptor JWT no handshake WebSocket
     UserChannelInterceptor.java  # Interceptor de canal para usuario
   repository/
-    GeneratedMediaRepository.java # Repositorio de midias geradas
+    GeneratedMediaRepository.java
     UploadedImageRepository.java
     UserRepository.java
   model/
@@ -215,14 +257,14 @@ src/main/java/com/ezlearning/
       ErrorResponse.java
       LoginRequest.java
       LoginResponse.java
-      MediaGenerationRequest.java  # DTO de requisicao de geracao
-      MediaGenerationResponse.java # DTO de resposta de geracao
-      MediaRequest.java            # DTO de requisicao de diagrama
-      MediaResponse.java           # DTO de resposta de diagrama
-      PdfExportRequest.java        # DTO de requisicao de exportacao PDF
-      ReasoningApiResponse.java    # DTO de resposta bruta da API externa
-      ReasoningRequest.java        # DTO de requisicao de raciocinio
-      ReasoningResponse.java       # DTO de resposta do raciocinio
+      MediaGenerationRequest.java
+      MediaGenerationResponse.java
+      MediaRequest.java
+      MediaResponse.java
+      PdfExportRequest.java
+      ReasoningApiResponse.java
+      ReasoningRequest.java
+      ReasoningResponse.java
       RegisterRequest.java
       TtsRequest.java
       TtsResponse.java
@@ -230,9 +272,9 @@ src/main/java/com/ezlearning/
   EzLearningApplication.java
 
 src/main/resources/
-  application.yml               # Configuracao principal
-  application-dev.yml           # Profile dev (H2)
-  application-prod.yml          # Profile prod (tuning)
+  application.yml
+  application-dev.yml
+  application-prod.yml
   db/migration/
     V1__create_users_table.sql
     V2__create_uploaded_images_table.sql
@@ -242,17 +284,17 @@ src/main/resources/
 
 ### Saude
 
-| Metodo | Rota               | Descricao          | Autenticacao |
-|--------|--------------------|--------------------|--------------|
-| GET    | `/actuator/health` | Health check       | Nao          |
+| Metodo | Rota               | Descricao    | Autenticacao |
+|--------|--------------------|--------------|--------------|
+| GET    | `/actuator/health` | Health check | Nao          |
 
 ### Autenticacao
 
-| Metodo | Rota                | Descricao                          | Autenticacao |
-|--------|---------------------|------------------------------------|--------------|
-| POST   | `/api/auth/register`| Cadastro de usuario                | Nao          |
-| POST   | `/api/auth/login`   | Login (retorna access + refresh)   | Nao          |
-| POST   | `/api/auth/refresh` | Renova access token via refresh    | Nao          |
+| Metodo | Rota                 | Descricao                        | Autenticacao |
+|--------|----------------------|----------------------------------|--------------|
+| POST   | `/api/auth/register` | Cadastro de usuario              | Nao          |
+| POST   | `/api/auth/login`    | Login (retorna access + refresh) | Nao          |
+| POST   | `/api/auth/refresh`  | Renova access token via refresh  | Nao          |
 
 **Register Request:**
 ```json
@@ -288,11 +330,11 @@ src/main/resources/
 
 ### Upload de Imagens
 
-| Metodo | Rota                        | Descricao                    | Autenticacao |
-|--------|-----------------------------|------------------------------|--------------|
-| POST   | `/api/uploads`              | Upload de imagem (<=5MB)     | Nao          |
-| GET    | `/api/uploads/{id}`         | Servir imagem original       | Nao          |
-| GET    | `/api/uploads/{id}/thumbnail`| Servir thumbnail            | Nao          |
+| Metodo | Rota                         | Descricao                 | Autenticacao |
+|--------|------------------------------|---------------------------|--------------|
+| POST   | `/api/uploads`               | Upload de imagem (<=5MB)  | Nao          |
+| GET    | `/api/uploads/{id}`          | Servir imagem original    | Nao          |
+| GET    | `/api/uploads/{id}/thumbnail`| Servir thumbnail          | Nao          |
 
 **Upload Response:**
 ```json
@@ -311,14 +353,14 @@ src/main/resources/
 
 ### Geracao de Midias
 
-| Metodo | Rota                       | Descricao                                 | Autenticacao |
-|--------|----------------------------|-------------------------------------------|--------------|
-| POST   | `/api/media/generate`      | Gera imagem a partir de prompt textual    | Sim          |
-| POST   | `/api/media/diagram`       | Gera diagrama a partir de prompt textual  | Sim          |
-| GET    | `/api/media/{id}`          | Serve o conteudo binario da midia gerada  | Sim          |
-| GET    | `/api/media/{id}/image`    | Serve a imagem PNG do diagrama            | Sim          |
+| Metodo | Rota                    | Descricao                              | Autenticacao |
+|--------|-------------------------|----------------------------------------|--------------|
+| POST   | `/api/media/generate`   | Gera imagem a partir de prompt textual | Sim          |
+| POST   | `/api/media/diagram`    | Gera diagrama a partir de prompt       | Sim          |
+| GET    | `/api/media/{id}`       | Serve o conteudo binario da midia      | Sim          |
+| GET    | `/api/media/{id}/image` | Serve a imagem PNG do diagrama         | Sim          |
 
-**Generate Request (POST /api/media/generate):**
+**Generate Request:**
 ```json
 {
   "prompt": "um diagrama de classes UML",
@@ -331,53 +373,23 @@ src/main/resources/
 }
 ```
 
-**Generate Response:**
-```json
-{
-  "id": "uuid",
-  "url": "/api/media/{id}",
-  "thumbnailUrl": null,
-  "originalName": "um diagrama de classes UML",
-  "size": 12345,
-  "mimeType": "image/png"
-}
-```
-
-**Diagram Request (POST /api/media/diagram):**
+**Diagram Request:**
 ```json
 {
   "prompt": "diagrama de arquitetura em camadas"
 }
 ```
 
-**Diagram Response:**
-```json
-{
-  "id": "uuid",
-  "description": "/api/media/{id}",
-  "imageUrl": "/api/media/{id}/image"
-}
-```
-
 **Comportamento:**
 - O prompt e hasheado (SHA-256) para servir como chave de cache no Redis
 - Em caso de erro na API externa, busca no banco de dados (fallback)
-- A midia gerada e armazenada em `uploads/diagrams/{uuid}.md`
-- A imagem PNG extraida e armazenada em `uploads/diagrams/{uuid}.png`
 - Midias nao referenciadas sao removidas apos 1 hora (limpeza agendada)
-
-### Midias/Diagramas
-
-| Metodo | Rota                | Descricao                   | Autenticacao |
-|--------|---------------------|-----------------------------|--------------|
-| POST   | `/api/media/diagram`| Gera diagrama               | Sim          |
-| GET    | `/api/media/{id}`   | Serve arquivo de midia      | Sim          |
 
 ### Raciocinio
 
-| Metodo | Rota                 | Descricao                            | Autenticacao |
-|--------|----------------------|--------------------------------------|--------------|
-| POST   | `/api/chat/reason`   | Envia pergunta e recebe resposta com raciocinio | Sim |
+| Metodo | Rota               | Descricao                                      | Autenticacao |
+|--------|--------------------|------------------------------------------------|--------------|
+| POST   | `/api/chat/reason` | Envia pergunta e recebe resposta com raciocinio | Sim          |
 
 **Reason Request:**
 ```json
@@ -401,18 +413,18 @@ src/main/resources/
 ```
 
 **Comportamento:**
-- Cliente HTTP resiliente com retry (3 tentativas, backoff exponencial 1s/2s/4s)
-- Timeout configurado em 30s para leitura
-- Erros 4xx sao lancados sem retry; 5xx e timeout disparam retry
+- Retry com backoff exponencial (3 tentativas: 1s / 2s / 4s)
+- Timeout de leitura: 30s
+- Erros 4xx sem retry; 5xx e timeout disparam retry
 
 ### Sintese de Audio
 
-| Metodo | Rota                  | Descricao                     | Autenticacao |
-|--------|-----------------------|--------------------------------|--------------|
-| POST   | `/api/tts/synthesize` | Sintetiza texto em audio WAV  | Sim          |
-| GET    | `/api/tts/{id}`       | Serve arquivo de audio        | Sim          |
+| Metodo | Rota                  | Descricao                    | Autenticacao |
+|--------|-----------------------|------------------------------|--------------|
+| POST   | `/api/tts/synthesize` | Sintetiza texto em audio WAV | Sim          |
+| GET    | `/api/tts/{id}`       | Serve arquivo de audio       | Sim          |
 
-**Synthesize Request (POST /api/tts/synthesize):**
+**Synthesize Request:**
 ```json
 {
   "text": "Texto para sintetizar",
@@ -420,24 +432,15 @@ src/main/resources/
 }
 ```
 
-**Synthesize Response:**
-```json
-{
-  "audioUrl": "/api/tts/{uuid}",
-  "durationSeconds": 0.0,
-  "format": "wav"
-}
-```
-
-Voice padrao: `af_heart`. Vozes alternativas: `am_michelle`, `af_bella`.
+Voice padrao: `af_heart`. Alternativas: `am_michelle`, `af_bella`.
 
 ### Exportacao PDF
 
-| Metodo | Rota                            | Descricao                                  | Autenticacao |
-|--------|---------------------------------|--------------------------------------------|--------------|
-| POST   | `/api/chat/{messageId}/export`  | Exporta duvida + resposta em PDF           | Sim          |
+| Metodo | Rota                           | Descricao                        | Autenticacao |
+|--------|--------------------------------|----------------------------------|--------------|
+| POST   | `/api/chat/{messageId}/export` | Exporta duvida + resposta em PDF | Sim          |
 
-**Export Request (POST /api/chat/{messageId}/export):**
+**Export Request:**
 ```json
 {
   "question": "Como resolver uma equacao de segundo grau?",
@@ -453,20 +456,14 @@ Voice padrao: `af_heart`. Vozes alternativas: `am_michelle`, `af_bella`.
 }
 ```
 
-**Export Response:** `application/pdf` (binary) com `Content-Disposition: attachment; filename="duvida-YYYY-MM-DD.pdf"`
-
-**Comportamento:**
-- Gera PDF A4 com cabecalho (titulo + data), secao de pergunta, resposta com passos numerados e diagramas embutidos
-- Cache interno por hash SHA-256 do conteudo (evita regeneracao)
-- `mediaIds` opcional: lista de UUIDs de diagramas para embutir no PDF
-- Diagramas sao carregados via `MediaService` e escalados para no maximo 500px de largura
+**Export Response:** `application/pdf` com `Content-Disposition: attachment; filename="duvida-YYYY-MM-DD.pdf"`
 
 ### Comunicacao em Tempo Real
 
-| Metodo | Rota                                   | Descricao                              | Autenticacao |
-|--------|----------------------------------------|----------------------------------------|--------------|
-| GET    | `/api/chat/stream?question=&context=`  | SSE streaming de raciocinio            | Sim          |
-| WS     | `/ws` (STOMP over SockJS)              | WebSocket para chat em tempo real      | Sim (token via query param) |
+| Metodo | Rota                                  | Descricao                        | Autenticacao                    |
+|--------|---------------------------------------|----------------------------------|---------------------------------|
+| GET    | `/api/chat/stream?question=&context=` | SSE streaming de raciocinio      | Sim                             |
+| WS     | `/ws` (STOMP over SockJS)             | WebSocket para chat em tempo real| Sim (token via query param)     |
 
 **SSE Events:**
 ```
@@ -489,7 +486,7 @@ data: {"type": "complete"}
 
 - Maximo 5 requisicoes/minuto por usuario (WebSocket e SSE)
 - Implementado com Redis (contador com TTL de 60s)
-- Resposta 429 ou evento de erro quando excedido
+- Resposta 429 quando excedido
 
 ### Documentacao Interativa
 
@@ -498,24 +495,24 @@ data: {"type": "complete"}
 
 ## Variaveis de Ambiente
 
-| Variavel              | Default            | Descricao                     | Autenticacao     |
-|-----------------------|--------------------|-------------------------------|------------------|
-| `DATABASE_URL`        | `jdbc:postgresql://localhost:5432/ezlearning` | URL do PostgreSQL | `DATABASE_USER` + `DATABASE_PASSWORD` |
-| `DATABASE_USER`       | `ezlearning`       | Usuario do banco              | --               |
-| `DATABASE_PASSWORD`   | `ezlearning`       | Senha do banco                | --               |
-| `REDIS_HOST`          | `localhost`        | Host do Redis                 | Nao requerida    |
-| `JWT_SECRET`          | -- (obrigatorio)   | Chave secreta para assinar JWT | Nao requerida (usada internamente) |
-| `CORS_ALLOWED_ORIGINS`| `http://localhost:5173,http://localhost:3000` | Origens permitidas CORS | Nao requerida |
-| `REASONING_API_URL`   | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de raciocinio | API Key (query param) |
-| `REASONING_API_KEY`   | -- (obrigatorio)   | Chave da API de raciocinio    | Google Gemini     |
-| `MEDIA_API_URL`       | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de midia | API Key (query param) |
-| `MEDIA_API_KEY`       | -- (obrigatorio)   | Chave da API de midia         | Google Gemini     |
-| `TTS_API_URL`         | `http://localhost:5050/v1/audio/speech` | URL do Kokoro TTS | Nao requerida (Docker local) |
+| Variavel               | Default                                                                 | Descricao                        |
+|------------------------|-------------------------------------------------------------------------|----------------------------------|
+| `DATABASE_URL`         | `jdbc:postgresql://localhost:5432/ezlearning`                           | URL do PostgreSQL                |
+| `DATABASE_USER`        | `ezlearning`                                                            | Usuario do banco                 |
+| `DATABASE_PASSWORD`    | `ezlearning`                                                            | Senha do banco                   |
+| `REDIS_HOST`           | `localhost`                                                             | Host do Redis                    |
+| `JWT_SECRET`           | -- (obrigatorio)                                                        | Chave secreta para assinar JWT   |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:3000`                           | Origens permitidas CORS          |
+| `REASONING_API_URL`    | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de raciocinio |
+| `REASONING_API_KEY`    | -- (obrigatorio)                                                        | Chave da API Google Gemini       |
+| `MEDIA_API_URL`        | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de midia     |
+| `MEDIA_API_KEY`        | -- (obrigatorio)                                                        | Chave da API Google Gemini       |
+| `TTS_API_URL`          | `http://localhost:5050/v1/audio/speech`                                 | URL do Kokoro TTS                |
 
 ## APIs Externas
 
-| API            | Finalidade                          | Provedor    | URL                                                     | Autenticacao             |
-|----------------|-------------------------------------|-------------|---------------------------------------------------------|--------------------------|
-| Gemini (flash) | Raciocinio logico (raciocinio)      | Google      | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | API Key (query param) |
-| Gemini (flash) | Geracao de midias (imagens/diagramas)| Google      | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | API Key (query param) |
-| Kokoro TTS     | Sintese de voz (texto para audio)   | Kokoro      | `http://localhost:5050/v1/audio/speech` (Docker local)  | Nao requerida            |
+| API            | Finalidade                           | Provedor | Autenticacao          |
+|----------------|--------------------------------------|----------|-----------------------|
+| Gemini (flash) | Raciocinio logico                    | Google   | API Key (query param) |
+| Gemini (flash) | Geracao de midias (imagens/diagramas)| Google   | API Key (query param) |
+| Kokoro TTS     | Sintese de voz (texto para audio)    | Local    | Nao requerida         |
