@@ -463,19 +463,19 @@ data: {"type": "complete"}
 
 ## Variaveis de Ambiente
 
-| Variavel              | Default            | Descricao                     |
-|-----------------------|--------------------|-------------------------------|
-| `DATABASE_URL`        | `jdbc:postgresql://localhost:5432/ezlearning` | URL do PostgreSQL |
-| `DATABASE_USER`       | `ezlearning`       | Usuario do banco              |
-| `DATABASE_PASSWORD`   | `ezlearning`       | Senha do banco                |
-| `REDIS_HOST`          | `localhost`        | Host do Redis                 |
-| `JWT_SECRET`          | -- (obrigatorio)   | Chave secreta para assinar JWT |
-| `CORS_ALLOWED_ORIGINS`| `http://localhost:5173,http://localhost:3000` | Origens permitidas CORS |
-| `REASONING_API_URL`   | --                 | URL da API de raciocinio      |
-| `REASONING_API_KEY`   | --                 | Chave da API de raciocinio    |
-| `MEDIA_API_URL`       | --                 | URL da API de midia           |
-| `MEDIA_API_KEY`       | --                 | Chave da API de midia         |
-| `TTS_API_URL`         | `http://localhost:5050/v1/audio/speech` | URL do Kokoro TTS |
+| Variavel              | Default            | Descricao                     | Autenticacao     |
+|-----------------------|--------------------|-------------------------------|------------------|
+| `DATABASE_URL`        | `jdbc:postgresql://localhost:5432/ezlearning` | URL do PostgreSQL | `DATABASE_USER` + `DATABASE_PASSWORD` |
+| `DATABASE_USER`       | `ezlearning`       | Usuario do banco              | --               |
+| `DATABASE_PASSWORD`   | `ezlearning`       | Senha do banco                | --               |
+| `REDIS_HOST`          | `localhost`        | Host do Redis                 | Nao requerida    |
+| `JWT_SECRET`          | -- (obrigatorio)   | Chave secreta para assinar JWT | Nao requerida (usada internamente) |
+| `CORS_ALLOWED_ORIGINS`| `http://localhost:5173,http://localhost:3000` | Origens permitidas CORS | Nao requerida |
+| `REASONING_API_URL`   | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de raciocinio | API Key (query param) |
+| `REASONING_API_KEY`   | -- (obrigatorio)   | Chave da API de raciocinio    | Google Gemini     |
+| `MEDIA_API_URL`       | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de midia | API Key (query param) |
+| `MEDIA_API_KEY`       | -- (obrigatorio)   | Chave da API de midia         | Google Gemini     |
+| `TTS_API_URL`         | `http://localhost:5050/v1/audio/speech` | URL do Kokoro TTS | Nao requerida (Docker local) |
 
 ## APIs Externas
 
