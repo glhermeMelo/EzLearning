@@ -152,14 +152,7 @@ docker run --rm --gpus all nvidia/cuda:12.6.2-base-ubuntu22.04 nvidia-smi
 
 Se o comando exibir as informacoes da GPU, a configuracao foi bem-sucedida.
 
-### 5. Clonar o repositorio
-
-```bash
-git clone <url-do-repositorio> ezlearning
-cd ezlearning
-```
-
-### 6. Criar arquivo .env
+### 5. Criar arquivo .env
 
 ```bash
 cp .env.example .env
@@ -176,19 +169,7 @@ Edite o arquivo `.env` e preencha as seguintes variaveis obrigatorias:
 
 > **Nota:** Apenas **1 chave externa** e necessaria: a chave do Google Gemini (gratuita em https://aistudio.google.com/apikey). Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave**, ja que ambos os servicos utilizam a API Gemini. O Kokoro TTS roda localmente via Docker e nao requer chave.
 
-### 7. Build do backend
-
-```bash
-./mvnw clean package -DskipTests
-```
-
-Ou, se tiver o Maven instalado globalmente:
-
-```bash
-mvn clean package -DskipTests
-```
-
-### 8. Subir tudo
+### 6. Subir tudo
 
 ```bash
 docker compose up -d
