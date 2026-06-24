@@ -15,6 +15,7 @@ services:
       - REASONING_API_KEY=${REASONING_API_KEY}
       - MEDIA_API_URL=${MEDIA_API_URL}
       - MEDIA_API_KEY=${MEDIA_API_KEY}
+      - TTS_API_URL=http://tts:5050/v1/audio/speech
     depends_on:
       db:
         condition: service_healthy
@@ -57,6 +58,26 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi:latest
+    container_name: ezlearning-tts
+    ports:
+      - "5050:5050"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
 volumes:
   pgdata:

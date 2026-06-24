@@ -17,20 +17,21 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 | Documentacao     | Springdoc OpenAPI (Swagger UI)                 |
 | Container        | Docker + Docker Compose                        |
 | PDF              | Apache PDFBox 3.0.3                            |
+| TTS              | Kokoro TTS (Docker)                            |
+| API Externa      | Google Gemini API (raciocinio + geracao de midias) |
 
 ## Status
 
 - US010 -- Infraestrutura (Docker, health check, estrutura base): concluida
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
-- US009B -- Integracao API de geracao de midias: concluida
-- US009A -- Integracao API de raciocinio logico: concluida
 
 ## Pre-requisitos
 
 - Java 21 (Temurin ou OpenJDK)
 - Docker + Docker Compose (para ambiente completo)
 - Maven 3.9+ (opcional, se usar wrapper)
+- NVIDIA GPU (para Kokoro TTS via Docker)
 
 ## Como Executar
 
@@ -40,7 +41,7 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 docker compose up
 ```
 
-Sobe o app (`http://localhost:8080`), PostgreSQL 16 e Redis 7. O profile ativo e `prod`.
+Sobe o app (`http://localhost:8080`), PostgreSQL 16, Redis 7 e Kokoro TTS (`http://localhost:5050`). O profile ativo e `prod`.
 
 ### Desenvolvimento local (H2 + Redis)
 
@@ -251,8 +252,8 @@ src/main/resources/
   "answer": "Para resolver uma equacao de segundo grau, use a formula de Bhaskara...",
   "steps": [
     "Identifique os coeficientes a, b e c",
-    "Calcule o discriminante: Δ = b² - 4ac",
-    "Aplique a formula: x = (-b ± √Δ) / 2a"
+    "Calcule o discriminante: Delta = b^2 - 4ac",
+    "Aplique a formula: x = (-b +- sqrt(Delta)) / 2a"
   ],
   "confidence": 0.95
 }
@@ -282,3 +283,12 @@ src/main/resources/
 | `REASONING_API_KEY`   | --                 | Chave da API de raciocinio    |
 | `MEDIA_API_URL`       | --                 | URL da API de midia           |
 | `MEDIA_API_KEY`       | --                 | Chave da API de midia         |
+| `TTS_API_URL`         | `http://localhost:5050/v1/audio/speech` | URL do Kokoro TTS |
+
+## APIs Externas
+
+| API            | Finalidade                          | Provedor    | Autenticacao             |
+|----------------|-------------------------------------|-------------|--------------------------|
+| Gemini (flash) | Raciocinio logico (raciocinio)      | Google      | API Key (Bearer token)   |
+| Gemini (flash) | Geracao de midias (imagens/diagramas)| Google      | API Key (Bearer token)   |
+| Kokoro TTS     | Sintese de voz (texto para audio)   | Kokoro      | Nao requerida (Docker local) |

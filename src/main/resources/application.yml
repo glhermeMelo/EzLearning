@@ -46,6 +46,8 @@ app:
     media:
       url: ${MEDIA_API_URL}
       key: ${MEDIA_API_KEY}
+    tts:
+      url: ${TTS_API_URL:http://localhost:5050/v1/audio/speech}
 
 springdoc:
   api-docs:
