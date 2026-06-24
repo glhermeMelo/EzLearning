@@ -60,7 +60,7 @@ services:
     restart: unless-stopped
 
   tts:
-    image: ghcr.io/remsky/kokoro-fastapi:latest
+    image: kokoro-fastapi:latest
     container_name: ezlearning-tts
     ports:
       - "5050:5050"
