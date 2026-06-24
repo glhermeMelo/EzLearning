@@ -7,7 +7,9 @@ RUN mvn package -DskipTests -B
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
 WORKDIR /app
-RUN addgroup -S ezlearning && adduser -S ezlearning -G ezlearning
+RUN addgroup -S ezlearning && adduser -S ezlearning -G ezlearning && \
+    mkdir -p /app/uploads && \
+    chown -R ezlearning:ezlearning /app
 COPY --from=build /app/target/*.jar app.jar
 USER ezlearning
 EXPOSE 8080
