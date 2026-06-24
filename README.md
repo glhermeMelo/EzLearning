@@ -152,7 +152,36 @@ docker run --rm --gpus all nvidia/cuda:12.6.2-base-ubuntu22.04 nvidia-smi
 
 Se o comando exibir as informacoes da GPU, a configuracao foi bem-sucedida.
 
-### 5. Criar arquivo .env
+### 5. Buildar o Kokoro TTS localmente
+
+A imagem oficial do Kokoro TTS requer acesso sponsor no `ghcr.io`. E necessario buildar localmente a partir do repositorio publico:
+
+```bash
+cd ~
+git clone https://github.com/remsky/Kokoro-FastAPI
+cd Kokoro-FastAPI
+docker build -f docker/gpu/Dockerfile.optimized -t kokoro-fastapi:latest .
+```
+
+> **Nota:** O build pode demorar varios minutos pois baixa dependencias Python e o modelo de TTS. Ao final deve aparecer `naming to docker.io/library/kokoro-fastapi:latest`.
+
+### 6. Clonar o repositorio do EzLearning
+
+```bash
+git clone https://github.com/glhermeMelo/EzLearning
+cd EzLearning
+```
+
+Substitua a imagem do servico `tts` no `docker-compose.yml`:
+
+```yaml
+# de:
+image: ghcr.io/remsky/kokoro-fastapi:latest
+# para:
+image: kokoro-fastapi:latest
+```
+
+### 7. Criar arquivo .env
 
 ```bash
 cp .env.example .env
@@ -169,7 +198,7 @@ Edite o arquivo `.env` e preencha as seguintes variaveis obrigatorias:
 
 > **Nota:** Apenas **1 chave externa** e necessaria: a chave do Google Gemini (gratuita em https://aistudio.google.com/apikey). Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave**, ja que ambos os servicos utilizam a API Gemini. O Kokoro TTS roda localmente via Docker e nao requer chave.
 
-### 6. Subir tudo
+### 8. Subir tudo
 
 ```bash
 docker compose up -d
