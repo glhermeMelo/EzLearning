@@ -28,11 +28,13 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 - US008 -- Autenticacao (registro, login JWT, refresh token): concluida
 - US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
 
+**Testes:** 38 testes passando (JDK 21 + Maven).
+
 ## Pre-requisitos
 
 - Java 21 (Temurin ou OpenJDK)
 - Docker + Docker Compose (para ambiente completo)
-- Maven 3.9+ (opcional, se usar wrapper)
+- Maven 3.9.9 (instalado em `%USERPROFILE%\Tools\apache-maven-3.9.9`)
 - NVIDIA GPU (para Kokoro TTS via Docker)
 
 ## Como Executar
@@ -47,7 +49,9 @@ Sobe o app (`http://localhost:8080`), PostgreSQL 16, Redis 7 e Kokoro TTS (`http
 
 ### Desenvolvimento local (H2 + Redis)
 
-```bash
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 mvn spring-boot:run -Dspring.profiles.active=dev
 ```
 
@@ -61,8 +65,10 @@ mvn clean compile
 
 ### Testar
 
-```bash
-mvn test
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+& "C:\Users\Guilherme\Tools\apache-maven-3.9.9\bin\mvn.cmd" test
 ```
 
 ## Estrutura do Projeto
