@@ -94,15 +94,42 @@ sudo apt install -y nvidia-driver firmware-misc-nonfree
 sudo reboot
 ```
 
-#### 2.4. Verificar instalacao
+#### 2.4. Compilar o modulo do kernel (DKMS)
 
-Apos reiniciar, confirme que o driver foi carregado corretamente:
+Apos reiniciar, o modulo NVIDIA pode nao ter sido compilado automaticamente para o kernel atual. Instale os headers e force a compilacao via DKMS:
 
 ```bash
+# Instala os headers do kernel atual
+sudo apt install -y linux-headers-$(uname -r)
+
+# Compila e instala o modulo (substitua a versao se diferente)
+sudo dkms install nvidia/550.163.01 -k $(uname -r)
+```
+
+> **Nota:** A linha `Autoinstall on <kernel> succeeded for module(s) nvidia-current` confirma que a compilacao foi bem-sucedida. O erro `Could not find module source directory` ao final pode ser ignorado -- e um artefato do comando manual e nao afeta o resultado.
+
+Verifique se o modulo ficou com status `installed`:
+
+```bash
+sudo dkms status
+```
+
+#### 2.5. Carregar o modulo e verificar
+
+```bash
+sudo modprobe nvidia
 nvidia-smi
 ```
 
-A saida deve exibir informacoes da GPU (modelo, driver version, CUDA version). Se o comando nao for encontrado ou retornar erro, o driver nao foi instalado corretamente -- revise os passos anteriores.
+A saida deve exibir informacoes da GPU (modelo, Driver Version, CUDA Version):
+
+```
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 550.163.01   Driver Version: 550.163.01   CUDA Version: 12.4               |
+|-----------------------------------------+------------------------+----------------------+
+|   0  NVIDIA GeForce RTX 3060 ...    Off |   00000000:01:00.0 Off |                  N/A |
++-----------------------------------------------------------------------------------------+
+```
 
 ### 3. Instalar NVIDIA Container Toolkit
 
