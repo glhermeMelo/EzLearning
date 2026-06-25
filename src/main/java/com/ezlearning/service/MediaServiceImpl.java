@@ -13,7 +13,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -28,8 +31,8 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 @Service
 public class MediaServiceImpl implements MediaService {
@@ -40,7 +43,6 @@ public class MediaServiceImpl implements MediaService {
     private static final Duration CACHE_TTL = Duration.ofHours(24);
     private static final long CLEANUP_AGE_HOURS = 1;
     private static final String DIAGRAMS_SUBDIR = "diagrams";
-    private static final Pattern IMAGE_URL_PATTERN = Pattern.compile("!\\[.*?\\]\\((.*?)\\)");
 
     private final MediaApiClient mediaApiClient;
     private final GeneratedMediaRepository repository;
@@ -49,6 +51,9 @@ public class MediaServiceImpl implements MediaService {
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
+
+    @Value("${app.kroki.url:http://kroki:8000}")
+    private String krokiUrl;
 
     private Path diagramsDir;
 
@@ -95,23 +100,9 @@ public class MediaServiceImpl implements MediaService {
         }
 
         var enhancedPrompt = buildEnhancedPrompt(request);
-
-        String markdown;
-        try {
-            markdown = mediaApiClient.generateDiagram(enhancedPrompt);
-        } catch (Exception e) {
-            log.error("Failed to call media API for prompt: {}", request.prompt(), e);
-            throw new IllegalArgumentException("Falha ao gerar imagem: serviço de mídia indisponível");
-        }
-
-        if (markdown == null || markdown.isBlank()) {
-            throw new IllegalArgumentException("Falha ao gerar imagem: resposta vazia da API");
-        }
-
-        GeneratedMedia media = saveMarkdownMedia(markdown, request.prompt(), promptHash, userId);
+        GeneratedMedia media = createDiagram(enhancedPrompt, request.prompt(), promptHash, userId);
 
         redisTemplate.opsForValue().set(CACHE_PREFIX + promptHash, media.getId().toString(), CACHE_TTL);
-
         return buildResponse(media);
     }
 
@@ -141,22 +132,9 @@ public class MediaServiceImpl implements MediaService {
             return buildDiagramResponse(media);
         }
 
-        String markdown;
-        try {
-            markdown = mediaApiClient.generateDiagram(request.prompt());
-        } catch (Exception e) {
-            log.error("Failed to generate diagram for prompt: {}", request.prompt(), e);
-            throw new IllegalArgumentException("Falha ao gerar diagrama: serviço de mídia indisponível");
-        }
-
-        if (markdown == null || markdown.isBlank()) {
-            throw new IllegalArgumentException("Falha ao gerar diagrama: resposta vazia da API");
-        }
-
-        GeneratedMedia media = saveMarkdownMedia(markdown, request.prompt(), promptHash, null);
+        GeneratedMedia media = createDiagram(request.prompt(), request.prompt(), promptHash, null);
 
         redisTemplate.opsForValue().set(CACHE_PREFIX + promptHash, media.getId().toString(), CACHE_TTL);
-
         return buildDiagramResponse(media);
     }
 
@@ -209,54 +187,58 @@ public class MediaServiceImpl implements MediaService {
         }
     }
 
-    private GeneratedMedia saveMarkdownMedia(String markdown, String prompt, String promptHash, UUID userId) {
+    private GeneratedMedia createDiagram(String enhancedPrompt, String originalPrompt, String promptHash, UUID userId) {
+        String mermaid;
+        try {
+            mermaid = mediaApiClient.generateDiagram(enhancedPrompt);
+        } catch (Exception e) {
+            log.error("Failed to generate Mermaid code for prompt: {}", originalPrompt, e);
+            throw new IllegalArgumentException("Falha ao gerar diagrama: serviço de mídia indisponível");
+        }
+
+        byte[] png;
+        try {
+            png = renderMermaid(mermaid);
+        } catch (Exception e) {
+            log.error("Failed to render Mermaid via Kroki for prompt: {}", originalPrompt, e);
+            throw new IllegalArgumentException("Falha ao renderizar diagrama");
+        }
+
         var id = UUID.randomUUID();
-        var fileName = id + ".md";
-        var storedPath = DIAGRAMS_SUBDIR + "/" + fileName;
-        var targetPath = diagramsDir.resolve(fileName);
+        var mmdName = id + ".mmd";
+        var pngName = id + ".png";
+        var storedPath = DIAGRAMS_SUBDIR + "/" + mmdName;
 
         try {
-            Files.writeString(targetPath, markdown, StandardCharsets.UTF_8);
-            var size = Files.size(targetPath);
+            // Salva o codigo Mermaid (fonte) e o PNG renderizado
+            Files.writeString(diagramsDir.resolve(mmdName), mermaid, StandardCharsets.UTF_8);
+            Files.write(diagramsDir.resolve(pngName), png);
+            var size = Files.size(diagramsDir.resolve(mmdName));
 
-            var matcher = IMAGE_URL_PATTERN.matcher(markdown);
-            if (matcher.find()) {
-                var imageUrl = matcher.group(1);
-                if (!imageUrl.isBlank()) {
-                    downloadImage(imageUrl, diagramsDir.resolve(id + ".png"));
-                }
-            }
-
-            return repository.save(new GeneratedMedia(prompt, promptHash, storedPath, "text/markdown", size, userId));
+            return repository.save(new GeneratedMedia(originalPrompt, promptHash, storedPath, "text/vnd.mermaid", size, userId));
         } catch (IOException e) {
             throw new IllegalArgumentException("Erro ao processar diagrama gerado: " + e.getMessage());
         }
     }
 
-    private void downloadImage(String imageUrl, Path targetPath) throws IOException {
-        try {
-            var response = restTemplate.exchange(
-                    imageUrl,
-                    HttpMethod.GET,
-                    null,
-                    byte[].class
-            );
+    private byte[] renderMermaid(String mermaidCode) {
+        var headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-            if (response.getStatusCode().isError()) {
-                throw new IOException("Falha ao baixar imagem, status: " + response.getStatusCode());
-            }
+        var body = Map.of("diagram_source", mermaidCode);
+        var entity = new HttpEntity<>(body, headers);
 
-            var body = response.getBody();
-            if (body == null) {
-                throw new IOException("Resposta vazia ao baixar imagem");
-            }
+        var response = restTemplate.exchange(
+                krokiUrl + "/mermaid/png",
+                HttpMethod.POST,
+                entity,
+                byte[].class
+        );
 
-            Files.write(targetPath, body);
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException("Erro ao baixar imagem de " + imageUrl, e);
+        if (response.getStatusCode().isError() || response.getBody() == null) {
+            throw new IllegalStateException("Kroki retornou erro: " + response.getStatusCode());
         }
+        return response.getBody();
     }
 
     private String buildEnhancedPrompt(MediaGenerationRequest request) {
@@ -274,7 +256,7 @@ public class MediaServiceImpl implements MediaService {
         return new MediaGenerationResponse(
                 media.getId(),
                 "/api/media/" + media.getId(),
-                null,
+                "/api/media/" + media.getId() + "/image",
                 media.getPrompt().length() > 50
                         ? media.getPrompt().substring(0, 50) + "..."
                         : media.getPrompt(),

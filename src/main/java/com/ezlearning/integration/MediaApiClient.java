@@ -5,13 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URI;
 import java.util.List;
 
 @Component
@@ -19,98 +14,119 @@ public class MediaApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(MediaApiClient.class);
 
-    private static final int MAX_ATTEMPTS = 3;
-    private static final long BASE_BACKOFF_MS = 1000;
+    private static final String MODEL = "qwen2.5-coder:3b";
+
+    private static final String SYSTEM_PROMPT = """
+            You are a diagram generator. Given a description, output ONLY valid Mermaid diagram code.
+            Rules:
+            - Output raw Mermaid code only. No markdown fences, no backticks, no explanations.
+            - Use valid Mermaid syntax (graph, flowchart, sequenceDiagram, classDiagram, etc).
+            - Keep node labels short and clear.
+            - Do not include any text before or after the diagram code.
+            """;
 
     private final RestClient restClient;
-    private final String apiUrl;
-    private final String apiKey;
 
     public MediaApiClient(
-            @Qualifier("mediaRestClient") RestClient restClient,
+            @Qualifier("reasoningRestClient") RestClient restClient,
             AiApiProperties properties) {
         this.restClient = restClient;
-        this.apiUrl = properties.media().url();
-        this.apiKey = properties.media().key();
     }
 
     public String generateDiagram(String prompt) {
-        var geminiRequest = new GeminiRequest(List.of(
-                new GeminiRequest.Content(List.of(new GeminiRequest.Part(prompt)))
-        ));
+        var chatRequest = new ChatRequest(
+                MODEL,
+                List.of(
+                        new Message("system", SYSTEM_PROMPT),
+                        new Message("user", prompt)
+                )
+        );
 
-        URI uri = UriComponentsBuilder.fromHttpUrl(apiUrl)
-                .queryParam("key", apiKey)
-                .build()
-                .toUri();
+        log.debug("Sending diagram request to Ollama ({})", MODEL);
 
-        RuntimeException lastError = null;
+        var chatResponse = restClient.post()
+                .uri("")
+                .body(chatRequest)
+                .retrieve()
+                .body(ChatResponse.class);
 
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            try {
-                log.debug("Sending diagram generation request to Gemini API (attempt {}/{})", attempt, MAX_ATTEMPTS);
+        String mermaid = extractText(chatResponse);
+        mermaid = cleanMermaid(mermaid);
+        log.debug("Received Mermaid code from Ollama ({} chars)", mermaid.length());
+        return mermaid;
+    }
 
-                var geminiResponse = restClient.post()
-                        .uri(uri)
-                        .body(geminiRequest)
-                        .retrieve()
-                        .body(GeminiResponse.class);
+    private String cleanMermaid(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException("Resposta vazia do Ollama");
+        }
+        String text = raw.strip();
 
-                String markdown = extractText(geminiResponse);
-                log.debug("Received diagram response from Gemini API ({} chars)", markdown.length());
-                return markdown;
-
-            } catch (HttpServerErrorException | ResourceAccessException e) {
-                // 5xx e timeout/conexao: transitorios, vale retry
-                lastError = e;
-                log.warn("Transient error on attempt {}/{}: {}", attempt, MAX_ATTEMPTS, e.getMessage());
-            } catch (HttpClientErrorException.TooManyRequests e) {
-                // 429: rate limit, vale retry
-                lastError = e;
-                log.warn("Rate limited (429) on attempt {}/{}", attempt, MAX_ATTEMPTS);
-            } catch (HttpClientErrorException e) {
-                // demais 4xx: erro do request, nao adianta repetir
-                log.error("Client error from Gemini API, not retrying: {}", e.getStatusCode());
-                throw e;
-            }
-
-            if (attempt < MAX_ATTEMPTS) {
-                sleep(BASE_BACKOFF_MS * (long) Math.pow(2, attempt - 1)); // 1s, 2s, 4s
+        // Se houver bloco cercado ```mermaid ... ```, extrai o conteudo dele
+        int fenceStart = text.indexOf("```");
+        if (fenceStart >= 0) {
+            int contentStart = text.indexOf('\n', fenceStart);
+            int fenceEnd = text.indexOf("```", fenceStart + 3);
+            if (contentStart > 0 && fenceEnd > contentStart) {
+                text = text.substring(contentStart + 1, fenceEnd).strip();
             }
         }
 
-        log.error("All {} attempts failed for diagram generation", MAX_ATTEMPTS);
-        throw lastError;
-    }
+        // Palavras-chave que iniciam um diagrama Mermaid valido
+        String[] starters = {
+                "graph ", "graph\n", "flowchart ", "sequenceDiagram",
+                "classDiagram", "stateDiagram", "erDiagram", "journey",
+                "gantt", "pie", "mindmap", "timeline"
+        };
 
-    private void sleep(long ms) {
-        try {
-            Thread.sleep(ms);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Retry interrompido", ie);
+        int diagramStart = -1;
+        for (String s : starters) {
+            int idx = text.indexOf(s);
+            if (idx >= 0 && (diagramStart < 0 || idx < diagramStart)) {
+                diagramStart = idx;
+            }
         }
-    }
-
-    private String extractText(GeminiResponse response) {
-        if (response == null || response.candidates() == null || response.candidates().isEmpty()) {
-            throw new IllegalArgumentException("Resposta vazia da API Gemini");
+        if (diagramStart > 0) {
+            text = text.substring(diagramStart);
         }
-        var parts = response.candidates().getFirst().content().parts();
-        if (parts == null || parts.isEmpty()) {
-            throw new IllegalArgumentException("Resposta sem conteúdo da API Gemini");
+
+        // Corta linhas finais que claramente nao sao diagrama (texto explicativo)
+        var lines = text.split("\n");
+        var sb = new StringBuilder();
+        for (String line : lines) {
+            String trimmed = line.strip();
+            if (trimmed.startsWith("**") || trimmed.startsWith("##")
+                    || trimmed.toLowerCase().startsWith("explanation")
+                    || trimmed.toLowerCase().startsWith("this ")
+                    || trimmed.startsWith("```")) {
+                break;
+            }
+            sb.append(line).append("\n");
         }
-        return parts.getFirst().text();
+
+        String cleaned = sb.toString().strip();
+        if (cleaned.isBlank()) {
+            throw new IllegalArgumentException("Código Mermaid vazio após limpeza");
+        }
+        return cleaned;
     }
 
-    public record GeminiRequest(List<Content> contents) {
-        public record Content(List<Part> parts) {}
-        public record Part(String text) {}
+    private String extractText(ChatResponse response) {
+        if (response == null || response.choices() == null || response.choices().isEmpty()) {
+            throw new IllegalArgumentException("Resposta vazia do Ollama");
+        }
+        var message = response.choices().getFirst().message();
+        if (message == null || message.content() == null || message.content().isBlank()) {
+            throw new IllegalArgumentException("Resposta sem conteúdo do Ollama");
+        }
+        return message.content();
     }
 
-    public record GeminiResponse(List<Candidate> candidates) {
-        public record Candidate(Content content) {}
-        public record Content(List<Part> parts) {}
-        public record Part(String text) {}
+    public record ChatRequest(String model, List<Message> messages) {}
+
+    public record Message(String role, String content) {}
+
+    public record ChatResponse(List<Choice> choices) {
+        public record Choice(Message message) {}
     }
 }
