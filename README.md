@@ -17,7 +17,7 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 | Documentacao     | Springdoc OpenAPI (Swagger UI)                 |
 | Container        | Docker + Docker Compose                        |
 | PDF              | Apache PDFBox 3.0.3                            |
-| TTS              | Kokoro TTS (Docker)                            |
+| TTS              | Kokoro TTS (Docker, build local)               |
 | API Externa      | Google Gemini API (raciocinio + geracao de midias) |
 
 ## Status
@@ -31,7 +31,22 @@ Plataforma de educacao inteligente -- tutor digital personalizado para estudante
 - US005 -- Sintese de audio (Kokoro TTS): concluida
 - US006 -- Exportacao PDF (Apache PDFBox, cabecalho + pergunta + resposta com passos + diagramas, cache SHA-256): concluida
 
-**Testes:** 59 testes passando (JDK 21 + Maven), 0 falhas, 0 erros.
+### Validacao de endpoints (deploy Debian 13)
+
+Endpoints testados e funcionando end-to-end:
+
+- **auth-controller** -- register, login, refresh
+- **upload-controller** -- upload, get, thumbnail
+- **tts-controller** -- synthesize, get
+- **health-controller** -- health
+
+Endpoints com codigo validado, dependentes de cota/modelo Gemini ativo:
+
+- **chat-controller** -- reason, stream (SSE)
+- **media-controller** -- generate, diagram, get, image
+- **pdf-export-controller** -- export
+
+> **Nota sobre os modelos Gemini:** as linhas `gemini-1.5-*` e `gemini-2.0-*` foram descontinuadas pelo Google e retornam HTTP 404 (`model is not found for API version`). O `.env` e o `.env.example` agora usam **`gemini-2.5-flash`**, o modelo estavel atual. Caso um deploy futuro volte a falhar com 404, verifique a lista de modelos vigentes em https://ai.google.dev/gemini-api/docs/models e atualize `REASONING_API_URL` / `MEDIA_API_URL`.
 
 ## Pre-requisitos
 
@@ -165,6 +180,8 @@ docker build -f docker/gpu/Dockerfile.optimized -t kokoro-fastapi:latest .
 
 > **Nota:** O build pode demorar varios minutos pois baixa dependencias Python e o modelo de TTS. Ao final deve aparecer `naming to docker.io/library/kokoro-fastapi:latest`.
 
+> **Importante (porta interna):** O container Kokoro-FastAPI escuta na porta **8880** internamente (Uvicorn). O `docker-compose.yml` deste projeto ja mapeia `8880:8880` e a aplicacao chama o servico em `http://tts:8880/v1/audio/speech`. Caso clone uma versao do Kokoro que use outra porta, ajuste tanto o mapeamento de portas quanto a variavel `TTS_API_URL`.
+
 ### 6. Clonar o repositorio do EzLearning
 
 ```bash
@@ -172,14 +189,7 @@ git clone https://github.com/glhermeMelo/EzLearning
 cd EzLearning
 ```
 
-Substitua a imagem do servico `tts` no `docker-compose.yml`:
-
-```yaml
-# de:
-image: ghcr.io/remsky/kokoro-fastapi:latest
-# para:
-image: kokoro-fastapi:latest
-```
+O `docker-compose.yml` ja referencia a imagem local `kokoro-fastapi:latest` (buildada no passo 5), portanto nao e necessario alterar nada.
 
 ### 7. Criar arquivo .env
 
@@ -197,6 +207,8 @@ Edite o arquivo `.env` e preencha as seguintes variaveis obrigatorias:
 - `MEDIA_API_KEY` -- chave da API Google Gemini (geracao de midias)
 
 > **Nota:** Apenas **1 chave externa** e necessaria: a chave do Google Gemini (gratuita em https://aistudio.google.com/apikey). Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave**, ja que ambos os servicos utilizam a API Gemini. O Kokoro TTS roda localmente via Docker e nao requer chave.
+>
+> A chave do Google AI Studio comeca com o prefixo `AIza`. Caso o endpoint de chat/midia retorne 403/429 com `limit: 0`, verifique se a chave pertence a um projeto com free tier ativo (ou billing habilitado).
 
 ### 8. Subir tudo
 
@@ -207,8 +219,76 @@ docker compose up -d
 Apos a execucao, os servicos estarao disponiveis em:
 
 - **App:** http://localhost:8080
-- **Swagger UI:** http://localhost:8080/swagger-ui.html
-- **Kokoro TTS:** http://localhost:5050
+- **Swagger UI:** http://localhost:8080/swagger-ui/index.html
+- **OpenAPI JSON:** http://localhost:8080/v3/api-docs
+- **Kokoro TTS:** http://localhost:8880
+
+#### Verificacao rapida pos-deploy
+
+```bash
+# Health check
+curl -s http://localhost:8080/actuator/health
+
+# Registrar usuario e obter token
+curl -s -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Usuario","email":"usuario@exemplo.com","password":"senha1234"}'
+
+# Confirmar que o Kokoro TTS responde
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8880/health
+```
+
+## Troubleshooting
+
+Problemas encontrados durante o primeiro deploy em Debian 13 e suas solucoes.
+
+### Flyway: "Found more than one migration with version N"
+
+Duas migrations com o mesmo numero de versao no diretorio `db/migration/`. Renumere uma delas em cascata (ex.: a segunda `V4` vira `V5`) e rebuilde.
+
+### Flyway: "Migration checksum mismatch"
+
+O historico no banco diverge dos arquivos `.sql` apos edicao de uma migration ja aplicada. Em ambiente de desenvolvimento, recrie o banco do zero (apaga os dados):
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+### Swagger / api-docs retorna 403
+
+As rotas do Springdoc precisam estar na whitelist do Spring Security **e** o filtro JWT precisa ignora-las. Verifique:
+- `SecurityConfig` libera `/v3/api-docs/**`, `/swagger-ui/**` em `permitAll()`
+- `JwtAuthenticationFilter.shouldNotFilter()` retorna `true` para esses caminhos
+- O springdoc usa os paths **padrao** (`/v3/api-docs` e `/swagger-ui/index.html`); paths customizados precisam ser adicionados a whitelist
+
+### Login retorna 403 e log mostra StackOverflowError
+
+Ciclo de auto-referencia ao injetar `AuthenticationManager` no `AuthServiceImpl`. A autenticacao no login e feita diretamente via `PasswordEncoder.matches()`, sem `AuthenticationManager`.
+
+### Endpoints externos: "URI is not absolute"
+
+Os clientes HTTP (`ReasoningApiClient`, `MediaApiClient`) montam a URI absoluta a partir da URL completa do `.env` com `UriComponentsBuilder.fromHttpUrl(apiUrl).queryParam("key", apiKey)`.
+
+### TTS: "Connection refused" para http://tts:PORTA
+
+O container Kokoro escuta na **8880**. Garanta que o mapeamento de portas, o healthcheck e a variavel `TTS_API_URL` no `docker-compose.yml` apontem todos para `8880`. Apos alterar env, recrie o container:
+
+```bash
+docker compose up -d --force-recreate app
+```
+
+### Gemini: 404 "model is not found"
+
+Modelo descontinuado. Use `gemini-2.5-flash` (ou verifique os modelos vigentes em https://ai.google.dev/gemini-api/docs/models) em `REASONING_API_URL` e `MEDIA_API_URL`.
+
+### Docker build usando cache antigo
+
+Apos editar `pom.xml` ou arquivos fonte, se o build reutilizar camadas em cache e nao refletir as mudancas, force o rebuild completo:
+
+```bash
+docker compose build --no-cache app
+```
 
 ## Como Executar
 
@@ -218,7 +298,7 @@ Apos a execucao, os servicos estarao disponiveis em:
 docker compose up
 ```
 
-Sobe o app (`http://localhost:8080`), PostgreSQL 16, Redis 7 e Kokoro TTS (`http://localhost:5050`). O profile ativo e `prod`.
+Sobe o app (`http://localhost:8080`), PostgreSQL 16, Redis 7 e Kokoro TTS (`http://localhost:8880`). O profile ativo e `prod`.
 
 ### Desenvolvimento local (H2 + Redis)
 
@@ -250,28 +330,29 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 src/main/java/com/ezlearning/
   config/
     CorsConfig.java              # Configuracao CORS
-    SecurityConfig.java          # Seguranca, JWT filter, BCrypt
-    JwtAuthenticationFilter.java # Filtro de autenticacao JWT
-    RestTemplateConfig.java      # Configuracao do RestTemplate (timeouts)
-    AiApiProperties.java         # Properties de configuracao da API de raciocinio
+    SecurityConfig.java          # Seguranca, whitelist Swagger/auth, JWT filter, BCrypt
+    JwtAuthenticationFilter.java # Filtro de autenticacao JWT (ignora Swagger/api-docs/auth)
+    RestTemplateConfig.java      # Configuracao de RestClient/RestTemplate (timeouts, baseUrl)
+    AiApiProperties.java         # Properties das APIs (reasoning, media, tts)
+    OpenApiConfig.java           # Configuracao OpenAPI/Swagger (security scheme Bearer JWT)
     WebSocketConfig.java         # Configuracao WebSocket/STOMP
-    RateLimitingInterceptor.java # Interceptor de rate limiting (Redis)
+    RateLimitingInterceptor.java # Rate limiting (Redis)
   controller/
     AuthController.java          # Endpoints /api/auth/*
     HealthController.java        # Endpoint /actuator/health
     MediaController.java         # Endpoints /api/media/*
-    ChatController.java          # Endpoint /api/chat/reason
+    ChatController.java          # Endpoints /api/chat/reason e /api/chat/stream
     UploadController.java        # Endpoints /api/uploads/*
     UploadExceptionHandler.java  # Tratamento de erros de upload
     TtsController.java           # Endpoints /api/tts/*
     PdfExportController.java     # Endpoint /api/chat/{messageId}/export
   integration/
-    MediaApiClient.java          # Cliente HTTP resiliente para API externa de midias
-    ReasoningApiClient.java      # Cliente HTTP resiliente para API de raciocinio
+    MediaApiClient.java          # Cliente HTTP para API externa de midias (Gemini)
+    ReasoningApiClient.java      # Cliente HTTP para API de raciocinio (Gemini)
     TtsApiClient.java            # Cliente HTTP para Kokoro TTS
   service/
     AuthService.java             # Interface de autenticacao
-    AuthServiceImpl.java         # Implementacao (registro, login, refresh)
+    AuthServiceImpl.java         # Implementacao (registro, login via PasswordEncoder, refresh)
     JwtService.java              # Geracao e validacao de tokens JWT
     MediaService.java            # Interface de geracao de midias
     MediaServiceImpl.java        # Implementacao (geracao, cache Redis, fallback BD)
@@ -295,24 +376,7 @@ src/main/java/com/ezlearning/
     GeneratedMedia.java          # Entidade generated_media
     UploadedImage.java           # Entidade uploaded_images
     User.java                    # Entidade users
-    dto/
-      ChatMessageRequest.java
-      ChatStreamEvent.java
-      ErrorResponse.java
-      LoginRequest.java
-      LoginResponse.java
-      MediaGenerationRequest.java
-      MediaGenerationResponse.java
-      MediaRequest.java
-      MediaResponse.java
-      PdfExportRequest.java
-      ReasoningApiResponse.java
-      ReasoningRequest.java
-      ReasoningResponse.java
-      RegisterRequest.java
-      TtsRequest.java
-      TtsResponse.java
-      UploadResponse.java
+    dto/                         # DTOs de request/response
   EzLearningApplication.java
 
 src/main/resources/
@@ -322,6 +386,8 @@ src/main/resources/
   db/migration/
     V1__create_users_table.sql
     V2__create_uploaded_images_table.sql
+    V3__create_history_tables.sql
+    V4__create_generated_media_table.sql
 ```
 
 ## API Endpoints
@@ -361,7 +427,12 @@ src/main/resources/
 ```json
 {
   "token": "string (access token)",
-  "refreshToken": "string (refresh token)"
+  "refreshToken": "string (refresh token)",
+  "expiresIn": 3600,
+  "user": {
+    "name": "string",
+    "email": "string"
+  }
 }
 ```
 
@@ -376,9 +447,9 @@ src/main/resources/
 
 | Metodo | Rota                         | Descricao                 | Autenticacao |
 |--------|------------------------------|---------------------------|--------------|
-| POST   | `/api/uploads`               | Upload de imagem (<=5MB)  | Nao          |
-| GET    | `/api/uploads/{id}`          | Servir imagem original    | Nao          |
-| GET    | `/api/uploads/{id}/thumbnail`| Servir thumbnail          | Nao          |
+| POST   | `/api/uploads`               | Upload de imagem (<=5MB)  | Sim          |
+| GET    | `/api/uploads/{id}`          | Servir imagem original    | Sim          |
+| GET    | `/api/uploads/{id}/thumbnail`| Servir thumbnail          | Sim          |
 
 **Upload Response:**
 ```json
@@ -465,7 +536,7 @@ src/main/resources/
 
 | Metodo | Rota                  | Descricao                    | Autenticacao |
 |--------|-----------------------|------------------------------|--------------|
-| POST   | `/api/tts/synthesize` | Sintetiza texto em audio WAV | Sim          |
+| POST   | `/api/tts/synthesize` | Sintetiza texto em audio     | Sim          |
 | GET    | `/api/tts/{id}`       | Serve arquivo de audio       | Sim          |
 
 **Synthesize Request:**
@@ -534,8 +605,10 @@ data: {"type": "complete"}
 
 ### Documentacao Interativa
 
-- Swagger UI: `/swagger-ui.html`
-- OpenAPI JSON: `/api-docs`
+- Swagger UI: `/swagger-ui/index.html`
+- OpenAPI JSON: `/v3/api-docs`
+
+> O botao **Authorize** no Swagger UI permite colar o JWT (obtido via `/api/auth/login`) e testar os endpoints autenticados diretamente pela interface. O esquema de seguranca Bearer e definido em `OpenApiConfig`.
 
 ## Variaveis de Ambiente
 
@@ -547,16 +620,16 @@ data: {"type": "complete"}
 | `REDIS_HOST`           | `localhost`                                                             | Host do Redis                    |
 | `JWT_SECRET`           | -- (obrigatorio)                                                        | Chave secreta para assinar JWT   |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:3000`                           | Origens permitidas CORS          |
-| `REASONING_API_URL`    | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de raciocinio |
+| `REASONING_API_URL`    | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` | URL da API de raciocinio |
 | `REASONING_API_KEY`    | -- (obrigatorio)                                                        | Chave da API Google Gemini       |
-| `MEDIA_API_URL`        | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent` | URL da API de midia     |
+| `MEDIA_API_URL`        | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` | URL da API de midia     |
 | `MEDIA_API_KEY`        | -- (obrigatorio)                                                        | Chave da API Google Gemini       |
-| `TTS_API_URL`          | `http://localhost:5050/v1/audio/speech`                                 | URL do Kokoro TTS                |
+| `TTS_API_URL`          | `http://tts:8880/v1/audio/speech`                                       | URL do Kokoro TTS                |
 
 ## APIs Externas
 
-| API            | Finalidade                           | Provedor | Autenticacao          |
-|----------------|--------------------------------------|----------|-----------------------|
-| Gemini (flash) | Raciocinio logico                    | Google   | API Key (query param) |
-| Gemini (flash) | Geracao de midias (imagens/diagramas)| Google   | API Key (query param) |
-| Kokoro TTS     | Sintese de voz (texto para audio)    | Local    | Nao requerida         |
+| API                  | Finalidade                           | Provedor | Autenticacao          |
+|----------------------|--------------------------------------|----------|-----------------------|
+| Gemini 2.5 Flash     | Raciocinio logico                    | Google   | API Key (query param) |
+| Gemini 2.5 Flash     | Geracao de midias (imagens/diagramas)| Google   | API Key (query param) |
+| Kokoro TTS           | Sintese de voz (texto para audio)    | Local    | Nao requerida         |
