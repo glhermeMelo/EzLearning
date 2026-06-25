@@ -17,12 +17,14 @@ public class MediaApiClient {
     private static final Logger log = LoggerFactory.getLogger(MediaApiClient.class);
 
     private final RestClient restClient;
+    private final String apiUrl;
     private final String apiKey;
 
     public MediaApiClient(
             @Qualifier("mediaRestClient") RestClient restClient,
             AiApiProperties properties) {
         this.restClient = restClient;
+        this.apiUrl = properties.media().url();
         this.apiKey = properties.media().key();
     }
 
@@ -33,7 +35,11 @@ public class MediaApiClient {
 
         log.debug("Sending diagram generation request to Gemini API");
 
-        URI uri = UriComponentsBuilder.fromUriString("?key={key}").build(apiKey);
+        URI uri = UriComponentsBuilder.fromHttpUrl(apiUrl)
+                .queryParam("key", apiKey)
+                .build()
+                .toUri();
+
         var geminiResponse = restClient.post()
                 .uri(uri)
                 .body(geminiRequest)
@@ -41,9 +47,7 @@ public class MediaApiClient {
                 .body(GeminiResponse.class);
 
         String markdown = extractText(geminiResponse);
-
         log.debug("Received diagram response from Gemini API ({} chars)", markdown.length());
-
         return markdown;
     }
 
