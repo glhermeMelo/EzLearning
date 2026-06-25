@@ -63,9 +63,9 @@ services:
     image: kokoro-fastapi:latest
     container_name: ezlearning-tts
     ports:
-      - "5050:5050"
+      - "8880:8880"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5050/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8880/health"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -78,6 +78,5 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-
 volumes:
   pgdata:
