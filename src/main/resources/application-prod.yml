@@ -9,3 +9,9 @@ logging:
   level:
     root: WARN
     com.ezlearning: INFO
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
