@@ -39,7 +39,11 @@ public class ReasoningApiClient {
 
         log.debug("Sending request to Gemini API");
 
-        URI uri = UriComponentsBuilder.fromUriString("?key={key}").build(apiKey);
+        URI uri = UriComponentsBuilder.fromUriString("")
+                .queryParam("key", apiKey)
+                .build()
+                .toUri();
+
         var geminiResponse = restClient.post()
                 .uri(uri)
                 .body(geminiRequest)
@@ -47,9 +51,7 @@ public class ReasoningApiClient {
                 .body(GeminiResponse.class);
 
         String markdown = extractText(geminiResponse);
-
         log.debug("Received response from Gemini API ({} chars)", markdown.length());
-
         return new ReasoningResponse(markdown, List.of(), 0.0);
     }
 
