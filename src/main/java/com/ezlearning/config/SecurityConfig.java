@@ -6,7 +6,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.context.annotation.Bean;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -16,8 +15,8 @@ import org.springframework.security.config.annotation.authentication.configurati
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // Array com as rotas do Swagger que precisam ser públicas
-    private static final String[] SWAGGER_WHITELIST = {
+    private static final String[] PUBLIC_WHITELIST = {
+            // Swagger / OpenAPI
             "/v2/api-docs",
             "/v3/api-docs",
             "/v3/api-docs/**",
@@ -27,7 +26,13 @@ public class SecurityConfig {
             "/configuration/security",
             "/swagger-ui/**",
             "/webjars/**",
-            "/swagger-ui.html"
+            "/swagger-ui.html",
+
+            // Actuator
+            "/actuator/**",
+
+            // Auth
+            "/api/auth/**"
     };
 
     @Bean
@@ -43,20 +48,19 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable()) // Geralmente desabilitado em APIs REST
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        // Libera o Swagger para todos
-                        .requestMatchers(SWAGGER_WHITELIST).permitAll()
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(PUBLIC_WHITELIST).permitAll()
 
-                        // Rotas de login/registro
-                        .requestMatchers("/api/auth/**").permitAll()
+                // Endpoints autenticados
+                .requestMatchers("/api/uploads/**").authenticated()
+                .requestMatchers("/api/tts/**").authenticated()
+                .requestMatchers("/api/media/**").authenticated()
+                .requestMatchers("/api/chat/**").authenticated()
 
-                        // Qualquer outra requisição precisa de autenticação
-                        .anyRequest().authenticated()
-                );
-
-        // ... (aqui vão seus filtros JWT, se houver) ...
+                .anyRequest().authenticated()
+            );
 
         return http.build();
     }
