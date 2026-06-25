@@ -1,5 +1,6 @@
 package com.ezlearning.config;
 
+import com.ezlearning.config.AiApiProperties;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,11 +32,12 @@ public class RestTemplateConfig {
     }
 
     @Bean
-    public RestClient reasoningRestClient() {
+    public RestClient reasoningRestClient(AiApiProperties properties) {
         var factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30_000);
         factory.setReadTimeout(30_000);
         return RestClient.builder()
+                .baseUrl(properties.reasoning().url())
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .requestFactory(factory)
                 .build();
