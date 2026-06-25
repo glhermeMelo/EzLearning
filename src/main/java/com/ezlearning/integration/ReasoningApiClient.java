@@ -19,12 +19,14 @@ public class ReasoningApiClient {
     private static final Logger log = LoggerFactory.getLogger(ReasoningApiClient.class);
 
     private final RestClient restClient;
+    private final String apiUrl;
     private final String apiKey;
 
     public ReasoningApiClient(
             @Qualifier("reasoningRestClient") RestClient restClient,
             AiApiProperties properties) {
         this.restClient = restClient;
+        this.apiUrl = properties.reasoning().url();
         this.apiKey = properties.reasoning().key();
     }
 
@@ -39,7 +41,7 @@ public class ReasoningApiClient {
 
         log.debug("Sending request to Gemini API");
 
-        URI uri = UriComponentsBuilder.fromUriString("")
+        URI uri = UriComponentsBuilder.fromHttpUrl(apiUrl)
                 .queryParam("key", apiKey)
                 .build()
                 .toUri();
