@@ -215,7 +215,7 @@ public class MediaServiceImpl implements MediaService {
             Files.write(diagramsDir.resolve(pngName), png);
             var size = Files.size(diagramsDir.resolve(mmdName));
 
-            return repository.save(new GeneratedMedia(originalPrompt, promptHash, storedPath, "text/vnd.mermaid", size, userId));
+           return repository.save(new GeneratedMedia(id, originalPrompt, promptHash, storedPath, "text/vnd.mermaid", size, userId));
         } catch (IOException e) {
             throw new IllegalArgumentException("Erro ao processar diagrama gerado: " + e.getMessage());
         }

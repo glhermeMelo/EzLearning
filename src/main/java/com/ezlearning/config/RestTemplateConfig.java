@@ -27,7 +27,7 @@ public class RestTemplateConfig {
     public RestTemplate reasoningRestTemplate(RestTemplateBuilder builder) {
         return builder
                 .connectTimeout(Duration.ofSeconds(10))
-                .readTimeout(Duration.ofSeconds(30))
+                .readTimeout(Duration.ofSeconds(120))
                 .build();
     }
 
@@ -35,7 +35,7 @@ public class RestTemplateConfig {
     public RestClient reasoningRestClient(AiApiProperties properties) {
         var factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30_000);
-        factory.setReadTimeout(30_000);
+        factory.setReadTimeout(120_000);
         return RestClient.builder()
                 .baseUrl(properties.reasoning().url())
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)

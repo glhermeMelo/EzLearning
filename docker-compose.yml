@@ -22,6 +22,8 @@ services:
         condition: service_healthy
       cache:
         condition: service_started
+      tts:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
       interval: 30s
@@ -29,6 +31,7 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     container_name: ezlearning-db
@@ -46,6 +49,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
   cache:
     image: redis:7-alpine
     container_name: ezlearning-cache
@@ -57,25 +61,27 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+  # 🔥 TTS CONTAINERIZADO CORRETAMENTE (SEM DOCKERFILE)
   tts:
-    image: kokoro-fastapi:latest
+    image: python:3.11-slim
     container_name: ezlearning-tts
+    working_dir: /app
+    volumes:
+      - ./Kokoro-FastAPI:/app
     ports:
       - "8880:8880"
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8880/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+    environment:
+      - UV_VENV_CLEAR=1
+    command: >
+      sh -c "apt-get update &&
+             apt-get install -y curl bash git build-essential cmake gcc g++ &&
+             pip install uv &&
+             uv venv &&
+             uv pip install -e . &&
+             bash start-cpu.sh"
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+
   ollama:
     image: ollama/ollama:latest
     container_name: ezlearning-ollama
@@ -92,13 +98,7 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+
   kroki:
     image: yuzutech/kroki:latest
     container_name: ezlearning-kroki
@@ -109,12 +109,14 @@ services:
     depends_on:
       - kroki-mermaid
     restart: unless-stopped
+
   kroki-mermaid:
     image: yuzutech/kroki-mermaid:latest
     container_name: ezlearning-kroki-mermaid
     expose:
       - "8002"
     restart: unless-stopped
+
 volumes:
   pgdata:
   ollama_data:

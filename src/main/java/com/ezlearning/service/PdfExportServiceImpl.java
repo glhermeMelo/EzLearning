@@ -213,6 +213,18 @@ public class PdfExportServiceImpl implements PdfExportService {
             }
         }
 
+        private static String sanitizeForHelvetica(String text) {
+            return text
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+                    .replace("\n", " ")
+                    .replace("\t", " ")
+                    .replaceAll("[\\p{Cntrl}]", "")
+                    .replaceAll("[^\\u0020-\\u007E\\u00A0-\\u00FF]", "?")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+        }
+
         private void writeSectionTitle(String title) throws IOException {
             cs.beginText();
             cs.setFont(fontBold, HEADING_SIZE);
@@ -223,6 +235,7 @@ public class PdfExportServiceImpl implements PdfExportService {
         }
 
         private void writeBodyText(String text) throws IOException {
+            text = sanitizeForHelvetica(text);
             var lines = wrapText(text, fontRegular, BODY_SIZE);
             for (var line : lines) {
                 ensureSpace(BODY_SIZE * LEADING);
