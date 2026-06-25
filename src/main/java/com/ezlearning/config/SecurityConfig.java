@@ -6,6 +6,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -15,8 +16,13 @@ import org.springframework.security.config.annotation.authentication.configurati
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
+
     private static final String[] PUBLIC_WHITELIST = {
-            // Swagger / OpenAPI
             "/v2/api-docs",
             "/v3/api-docs",
             "/v3/api-docs/**",
@@ -27,11 +33,7 @@ public class SecurityConfig {
             "/swagger-ui/**",
             "/webjars/**",
             "/swagger-ui.html",
-
-            // Actuator
             "/actuator/**",
-
-            // Auth
             "/api/auth/**"
     };
 
@@ -52,15 +54,13 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(PUBLIC_WHITELIST).permitAll()
-
-                // Endpoints autenticados
                 .requestMatchers("/api/uploads/**").authenticated()
                 .requestMatchers("/api/tts/**").authenticated()
                 .requestMatchers("/api/media/**").authenticated()
                 .requestMatchers("/api/chat/**").authenticated()
-
                 .anyRequest().authenticated()
-            );
+            )
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
