@@ -8,9 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URI;
 import java.util.List;
 
 @Component
@@ -18,16 +16,14 @@ public class ReasoningApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(ReasoningApiClient.class);
 
+    private static final String MODEL = "gemma2:2b";
+
     private final RestClient restClient;
-    private final String apiUrl;
-    private final String apiKey;
 
     public ReasoningApiClient(
             @Qualifier("reasoningRestClient") RestClient restClient,
             AiApiProperties properties) {
         this.restClient = restClient;
-        this.apiUrl = properties.reasoning().url();
-        this.apiKey = properties.reasoning().key();
     }
 
     public ReasoningResponse ask(ReasoningRequest request) {
@@ -35,47 +31,42 @@ public class ReasoningApiClient {
                 ? request.context() + "\n\n" + request.question()
                 : request.question();
 
-        var geminiRequest = new GeminiRequest(List.of(
-                new GeminiRequest.Content(List.of(new GeminiRequest.Part(prompt)))
-        ));
+        var chatRequest = new ChatRequest(
+                MODEL,
+                List.of(new Message("user", prompt))
+        );
 
-        log.debug("Sending request to Gemini API");
+        log.debug("Sending request to Ollama ({})", MODEL);
 
-        URI uri = UriComponentsBuilder.fromHttpUrl(apiUrl)
-                .queryParam("key", apiKey)
-                .build()
-                .toUri();
-
-        var geminiResponse = restClient.post()
-                .uri(uri)
-                .body(geminiRequest)
+        var chatResponse = restClient.post()
+                .uri("")
+                .body(chatRequest)
                 .retrieve()
-                .body(GeminiResponse.class);
+                .body(ChatResponse.class);
 
-        String markdown = extractText(geminiResponse);
-        log.debug("Received response from Gemini API ({} chars)", markdown.length());
+        String markdown = extractText(chatResponse);
+        log.debug("Received response from Ollama ({} chars)", markdown.length());
         return new ReasoningResponse(markdown, List.of(), 0.0);
     }
 
-    private String extractText(GeminiResponse response) {
-        if (response == null || response.candidates() == null || response.candidates().isEmpty()) {
-            throw new IllegalArgumentException("Resposta vazia da API Gemini");
+    private String extractText(ChatResponse response) {
+        if (response == null || response.choices() == null || response.choices().isEmpty()) {
+            throw new IllegalArgumentException("Resposta vazia do Ollama");
         }
-        var parts = response.candidates().getFirst().content().parts();
-        if (parts == null || parts.isEmpty()) {
-            throw new IllegalArgumentException("Resposta sem conteúdo da API Gemini");
+        var message = response.choices().getFirst().message();
+        if (message == null || message.content() == null || message.content().isBlank()) {
+            throw new IllegalArgumentException("Resposta sem conteúdo do Ollama");
         }
-        return parts.getFirst().text();
+        return message.content();
     }
 
-    public record GeminiRequest(List<Content> contents) {
-        public record Content(List<Part> parts) {}
-        public record Part(String text) {}
-    }
+    // ---- Request (formato OpenAI / Ollama) ----
+    public record ChatRequest(String model, List<Message> messages) {}
 
-    public record GeminiResponse(List<Candidate> candidates) {
-        public record Candidate(Content content) {}
-        public record Content(List<Part> parts) {}
-        public record Part(String text) {}
+    public record Message(String role, String content) {}
+
+    // ---- Response (formato OpenAI / Ollama) ----
+    public record ChatResponse(List<Choice> choices) {
+        public record Choice(Message message) {}
     }
 }

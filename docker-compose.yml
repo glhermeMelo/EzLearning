@@ -15,7 +15,7 @@ services:
       - REASONING_API_KEY=${REASONING_API_KEY}
       - MEDIA_API_URL=${MEDIA_API_URL}
       - MEDIA_API_KEY=${MEDIA_API_KEY}
-      - TTS_API_URL=http://tts:5050/v1/audio/speech
+      - TTS_API_URL=http://tts:8880/v1/audio/speech
     depends_on:
       db:
         condition: service_healthy
@@ -28,9 +28,8 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
-
   db:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: ezlearning-db
     ports:
       - "5432:5432"
@@ -41,12 +40,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ezlearning"]
+      test: ["CMD-SHELL", "pg_isready -U ezlearning -d ezlearning"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-
   cache:
     image: redis:7-alpine
     container_name: ezlearning-cache
@@ -58,7 +56,6 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
-
   tts:
     image: kokoro-fastapi:latest
     container_name: ezlearning-tts
@@ -78,5 +75,27 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ezlearning-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 volumes:
   pgdata:
+  ollama_data:
