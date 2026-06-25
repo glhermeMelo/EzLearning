@@ -15,3 +15,5 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+    persistAuthorization: true
+    tryItOutEnabled: true
