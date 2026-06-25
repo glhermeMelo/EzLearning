@@ -2,8 +2,6 @@ package com.ezlearning.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
@@ -20,7 +18,6 @@ public class GeneratedMedia {
 
     @Setter
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Setter
@@ -60,8 +57,9 @@ public class GeneratedMedia {
 
     public GeneratedMedia() {}
 
-    public GeneratedMedia(String prompt, String promptHash, String storedPath,
+    public GeneratedMedia(UUID id, String prompt, String promptHash, String storedPath,
                           String mimeType, long size, UUID userId) {
+        this.id = id;
         this.prompt = prompt;
         this.promptHash = promptHash;
         this.storedPath = storedPath;
