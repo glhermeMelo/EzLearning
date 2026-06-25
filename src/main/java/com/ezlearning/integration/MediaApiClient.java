@@ -105,6 +105,15 @@ public class MediaApiClient {
         }
 
         String cleaned = sb.toString().strip();
+
+        // Escapa parenteses dentro de labels quadradas [texto(com)parenteses]
+        // para evitar que o parser Mermaid/Kroki interprete como modificador de forma
+        cleaned = cleaned.replaceAll("\\[([^\\]]*?)\\(([^\\]]*?)\\)([^\\]]*?)\\]",
+                "[\"$1($2)$3\"]");
+
+        // Remove caracteres nao-imprimiveis e Unicode problematicos
+        cleaned = cleaned.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "");
+
         if (cleaned.isBlank()) {
             throw new IllegalArgumentException("Código Mermaid vazio após limpeza");
         }
