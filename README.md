@@ -2,6 +2,23 @@
 
 Plataforma de educacao inteligente -- tutor digital personalizado para estudantes de Ciencias Exatas. Suporte 24/7 com explicacoes multimodais (texto, audio, imagens, PDF).
 
+## EXA0252 - Sistemas Multimidia - T01 (2026.1)
+
+**Curso:** Ciencia da Computacao / CCEN - Mossoro - Bacharelado - MT
+**Universidade:** UFERSA - Universidade Federal Rural do Semi-Arido
+**Professor:** Lenardo Chaves e Silva
+
+**Integrantes:**
+
+| Nome | GitHub |
+|------|--------|
+| Guilherme Francisco Martins de Melo | [@glhermeMelo](https://github.com/glhermeMelo) |
+| Jocineudo Oliveira Santos | [@JocineudoSantos](https://github.com/JocineudoSantos) |
+| Robson Breno de Oliveira Pinheiro | [@RobsonBOliveira](https://github.com/RobsonBOliveira) |
+| Luiz Carlos Fernandes Lopes | [@LuizCarlosFernandes](https://github.com/LuizCarlosFernandes) |
+
+---
+
 ## 1. Stack
 
 | Camada         | Tecnologia                              |
