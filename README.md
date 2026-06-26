@@ -1,67 +1,42 @@
 # EzLearning
 
-Plataforma de educacao inteligente -- tutor digital personalizado para estudantes de Ciencias Exatas. Suporte 24/7 com explicacoes multimodais (texto, audio, imagens).
+Plataforma de educacao inteligente -- tutor digital personalizado para estudantes de Ciencias Exatas. Suporte 24/7 com explicacoes multimodais (texto, audio, imagens, PDF).
 
-## Stack
+## 1. Stack
 
-| Camada           | Tecnologia                                     |
-|------------------|------------------------------------------------|
-| Linguagem        | Java 21                                        |
-| Framework        | Spring Boot 3.4.4                              |
-| Build            | Maven                                          |
-| Autenticacao     | Spring Security + JWT (jjwt 0.12.6)            |
-| ORM              | Spring Data JPA + Hibernate                    |
-| Database         | PostgreSQL 16 (prod) / H2 (dev)                |
-| Cache            | Redis 7                                        |
-| Migrations       | Flyway                                         |
-| Documentacao     | Springdoc OpenAPI (Swagger UI)                 |
-| Container        | Docker + Docker Compose                        |
-| PDF              | Apache PDFBox 3.0.3                            |
-| TTS              | Kokoro TTS (Docker, build local)               |
-| API Externa      | Google Gemini API (raciocinio + geracao de midias) |
+| Camada         | Tecnologia                              |
+|----------------|-----------------------------------------|
+| Linguagem      | Java 21                                 |
+| Framework      | Spring Boot 3.4.4                       |
+| Build          | Maven                                   |
+| Autenticacao   | Spring Security + JWT (jjwt 0.12.6)     |
+| ORM            | Spring Data JPA + Hibernate             |
+| Database       | PostgreSQL 16 (prod) / H2 (dev)         |
+| Cache          | Redis 7                                 |
+| Migrations     | Flyway                                  |
+| Documentacao   | Springdoc OpenAPI (Swagger UI)           |
+| Container      | Docker + Docker Compose                 |
+| IA / Chat      | Ollama (gemma2:2b)                      |
+| Diagramas      | Template engine + Kroki (Mermaid)        |
+| TTS            | gTTS (Google Text-to-Speech) — gratuito |
+| PDF            | Apache PDFBox 3.0.3                     |
 
-## Status
+## 2. APIs Externas
 
-- US010 -- Infraestrutura (Docker, health check, estrutura base): concluida
-- US008 -- Autenticacao (registro, login JWT, refresh token): concluida
-- US001 -- Upload de imagem (upload, thumbnail, validacao JPG/PNG <=5MB): concluida
-- US009A -- API de raciocinio (integracao com Gemini, chat com raciocinio logico): concluida
-- US009B -- Geracao de midias (Gemini, diagramas, cache Redis + banco): concluida
-- US009C -- Comunicacao em tempo real (WebSocket/SSE, rate limiting Redis): concluida
-- US005 -- Sintese de audio (Kokoro TTS): concluida
-- US006 -- Exportacao PDF (Apache PDFBox, cabecalho + pergunta + resposta com passos + diagramas, cache SHA-256): concluida
+| API                        | Proposito                    | Provedor | Autenticacao            |
+|----------------------------|------------------------------|----------|-------------------------|
+| Ollama (gemma2:2b)         | Raciocinio logico (chat)     | Local    | Nao requerida           |
+| gTTS (Google TTS)          | Sintese de voz pt-BR         | Google   | Nao requerida (gratuito)|
+| Kroki + Mermaid            | Renderizacao de diagramas    | Local    | Nao requerida           |
 
-### Validacao de endpoints (deploy Debian 13)
+## 3. Pre-requisitos
 
-Endpoints testados e funcionando end-to-end:
+- Debian 13 (ou similar) com Docker Engine + Docker Compose
+- Java 21 JDK + Maven 3.9+ (apenas para dev local)
 
-- **auth-controller** -- register, login, refresh
-- **upload-controller** -- upload, get, thumbnail
-- **tts-controller** -- synthesize, get
-- **health-controller** -- health
+## 4. Setup
 
-Endpoints com codigo validado, dependentes de cota/modelo Gemini ativo:
-
-- **chat-controller** -- reason, stream (SSE)
-- **media-controller** -- generate, diagram, get, image
-- **pdf-export-controller** -- export
-
-> **Nota sobre os modelos Gemini:** as linhas `gemini-1.5-*` e `gemini-2.0-*` foram descontinuadas pelo Google e retornam HTTP 404 (`model is not found for API version`). O `.env` e o `.env.example` agora usam **`gemini-2.5-flash`**, o modelo estavel atual. Caso um deploy futuro volte a falhar com 404, verifique a lista de modelos vigentes em https://ai.google.dev/gemini-api/docs/models e atualize `REASONING_API_URL` / `MEDIA_API_URL`.
-
-## Pre-requisitos
-
-- Debian 13 (ou similar)
-- Docker Engine + Docker Compose (veja Setup abaixo)
-- NVIDIA GPU com drivers proprietarios (para Kokoro TTS)
-- Java 21 JDK (para compilar localmente, via `apt install openjdk-21-jdk`)
-- Maven 3.9+ (opcional, ou use ./mvnw)
-- Chave de API Google Gemini (gratuita em https://aistudio.google.com/apikey)
-
-## Setup no Debian 13
-
-Guia passo a passo para configurar o ambiente do zero em uma maquina Debian 13.
-
-### 1. Instalar Docker Engine
+### 1. Instalar Docker
 
 ```bash
 sudo apt update
@@ -75,359 +50,99 @@ sudo systemctl enable docker
 sudo usermod -aG docker $USER
 ```
 
-> **Importante:** E necessario reiniciar a sessao (logout/login) ou reiniciar a maquina para que o grupo `docker` tenha efeito.
+> Reinicie a sessao apos adicionar o grupo `docker`.
 
-### 2. Instalar o driver NVIDIA
-
-O Debian 13 nao inclui drivers proprietarios NVIDIA por padrao. E necessario habilitar os repositorios `non-free` antes de instalar.
-
-#### 2.1. Habilitar repositorios non-free
-
-Edite o arquivo `/etc/apt/sources.list`:
-
-```bash
-sudo nano /etc/apt/sources.list
-```
-
-Garanta que as linhas contenham `contrib non-free non-free-firmware`:
-
-```
-deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
-```
-
-#### 2.2. Instalar o driver
-
-```bash
-sudo apt update
-sudo apt install -y nvidia-driver firmware-misc-nonfree
-```
-
-#### 2.3. Reiniciar (obrigatorio)
-
-```bash
-sudo reboot
-```
-
-#### 2.4. Compilar o modulo do kernel (DKMS)
-
-Apos reiniciar, o modulo NVIDIA pode nao ter sido compilado automaticamente para o kernel atual. Instale os headers e force a compilacao via DKMS:
-
-```bash
-# Instala os headers do kernel atual
-sudo apt install -y linux-headers-$(uname -r)
-
-# Compila e instala o modulo (substitua a versao se diferente)
-sudo dkms install nvidia/550.163.01 -k $(uname -r)
-```
-
-> **Nota:** A linha `Autoinstall on <kernel> succeeded for module(s) nvidia-current` confirma que a compilacao foi bem-sucedida. O erro `Could not find module source directory` ao final pode ser ignorado -- e um artefato do comando manual e nao afeta o resultado.
-
-Verifique se o modulo ficou com status `installed`:
-
-```bash
-sudo dkms status
-```
-
-#### 2.5. Carregar o modulo e verificar
-
-```bash
-sudo modprobe nvidia
-nvidia-smi
-```
-
-A saida deve exibir informacoes da GPU (modelo, Driver Version, CUDA Version):
-
-```
-+-----------------------------------------------------------------------------------------+
-| NVIDIA-SMI 550.163.01   Driver Version: 550.163.01   CUDA Version: 12.4               |
-|-----------------------------------------+------------------------+----------------------+
-|   0  NVIDIA GeForce RTX 3060 ...    Off |   00000000:01:00.0 Off |                  N/A |
-+-----------------------------------------------------------------------------------------+
-```
-
-### 3. Instalar NVIDIA Container Toolkit
-
-```bash
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt update
-sudo apt install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-```
-
-### 4. Verificar GPU no Docker
-
-Confirme que o Docker consegue acessar a GPU:
-
-```bash
-docker run --rm --gpus all nvidia/cuda:12.6.2-base-ubuntu22.04 nvidia-smi
-```
-
-Se o comando exibir as informacoes da GPU, a configuracao foi bem-sucedida.
-
-### 5. Buildar o Kokoro TTS localmente
-
-A imagem oficial do Kokoro TTS requer acesso sponsor no `ghcr.io`. E necessario buildar localmente a partir do repositorio publico:
-
-```bash
-cd ~
-git clone https://github.com/remsky/Kokoro-FastAPI
-cd Kokoro-FastAPI
-docker build -f docker/gpu/Dockerfile.optimized -t kokoro-fastapi:latest .
-```
-
-> **Nota:** O build pode demorar varios minutos pois baixa dependencias Python e o modelo de TTS. Ao final deve aparecer `naming to docker.io/library/kokoro-fastapi:latest`.
-
-> **Importante (porta interna):** O container Kokoro-FastAPI escuta na porta **8880** internamente (Uvicorn). O `docker-compose.yml` deste projeto ja mapeia `8880:8880` e a aplicacao chama o servico em `http://tts:8880/v1/audio/speech`. Caso clone uma versao do Kokoro que use outra porta, ajuste tanto o mapeamento de portas quanto a variavel `TTS_API_URL`.
-
-### 6. Clonar o repositorio do EzLearning
+### 2. Clonar e configurar
 
 ```bash
 git clone https://github.com/glhermeMelo/EzLearning
 cd EzLearning
-```
-
-O `docker-compose.yml` ja referencia a imagem local `kokoro-fastapi:latest` (buildada no passo 5), portanto nao e necessario alterar nada.
-
-### 7. Criar arquivo .env
-
-```bash
 cp .env.example .env
 ```
 
-Edite o arquivo `.env` e preencha as seguintes variaveis obrigatorias:
+Edite o `.env`:
 
-- `JWT_SECRET` -- chave secreta para assinar os tokens JWT. Gere uma com:
-  ```bash
-  openssl rand -base64 64
-  ```
-- `REASONING_API_KEY` -- chave da API Google Gemini (raciocinio)
-- `MEDIA_API_KEY` -- chave da API Google Gemini (geracao de midias)
+| Variavel             | Descricao                             |
+|----------------------|---------------------------------------|
+| `JWT_SECRET`         | Chave para assinar tokens JWT         |
+| `REASONING_API_URL`  | URL do Ollama (padrao: `http://ollama:11434/v1/chat/completions`) |
+| `REASONING_API_KEY`  | Chave da API (nao usada pelo Ollama)  |
+| `MEDIA_API_URL`      | URL da API de midia (nao usado atualmente) |
+| `MEDIA_API_KEY`      | Chave da API de midia                 |
+| `TTS_API_URL`        | URL do servico TTS (padrao: `http://tts:8880/v1/audio/speech`) |
 
-> **Nota:** Apenas **1 chave externa** e necessaria: a chave do Google Gemini (gratuita em https://aistudio.google.com/apikey). Tanto `REASONING_API_KEY` quanto `MEDIA_API_KEY` podem usar a **mesma chave**, ja que ambos os servicos utilizam a API Gemini. O Kokoro TTS roda localmente via Docker e nao requer chave.
->
-> A chave do Google AI Studio comeca com o prefixo `AIza`. Caso o endpoint de chat/midia retorne 403/429 com `limit: 0`, verifique se a chave pertence a um projeto com free tier ativo (ou billing habilitado).
+> **Nota:** O chat/reason usa Ollama local. O campo `REASONING_API_KEY` pode ser qualquer valor.
 
-### 8. Subir tudo
+### 3. Subir tudo
 
 ```bash
 docker compose up -d
 ```
 
-Apos a execucao, os servicos estarao disponiveis em:
+Apos inicio, os servicos estarao disponiveis em:
 
-- **App:** http://localhost:8080
-- **Swagger UI:** http://localhost:8080/swagger-ui/index.html
-- **OpenAPI JSON:** http://localhost:8080/v3/api-docs
-- **Kokoro TTS:** http://localhost:8880
+| Servico                | URL                                       |
+|------------------------|-------------------------------------------|
+| App (API REST)         | `http://localhost:8080`                    |
+| Swagger UI             | `http://localhost:8080/swagger-ui/index.html` |
+| OpenAPI JSON           | `http://localhost:8080/v3/api-docs`        |
+| gTTS (audio)           | `http://localhost:8880`                    |
+| Ollama                 | `http://localhost:11434`                   |
+| Kroki (diagramas)      | `http://localhost:8000`                    |
 
-#### Verificacao rapida pos-deploy
-
-```bash
-# Health check
-curl -s http://localhost:8080/actuator/health
-
-# Registrar usuario e obter token
-curl -s -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Usuario","email":"usuario@exemplo.com","password":"senha1234"}'
-
-# Confirmar que o Kokoro TTS responde
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8880/health
-```
-
-## Troubleshooting
-
-Problemas encontrados durante o primeiro deploy em Debian 13 e suas solucoes.
-
-### Flyway: "Found more than one migration with version N"
-
-Duas migrations com o mesmo numero de versao no diretorio `db/migration/`. Renumere uma delas em cascata (ex.: a segunda `V4` vira `V5`) e rebuilde.
-
-### Flyway: "Migration checksum mismatch"
-
-O historico no banco diverge dos arquivos `.sql` apos edicao de uma migration ja aplicada. Em ambiente de desenvolvimento, recrie o banco do zero (apaga os dados):
+### 4. Puxar modelos Ollama (se ainda nao fez)
 
 ```bash
-docker compose down -v
-docker compose up -d
+docker exec ezlearning-ollama ollama pull gemma2:2b
 ```
 
-### Swagger / api-docs retorna 403
+---
 
-As rotas do Springdoc precisam estar na whitelist do Spring Security **e** o filtro JWT precisa ignora-las. Verifique:
-- `SecurityConfig` libera `/v3/api-docs/**`, `/swagger-ui/**` em `permitAll()`
-- `JwtAuthenticationFilter.shouldNotFilter()` retorna `true` para esses caminhos
-- O springdoc usa os paths **padrao** (`/v3/api-docs` e `/swagger-ui/index.html`); paths customizados precisam ser adicionados a whitelist
+## 5. Documentacao da API
 
-### Login retorna 403 e log mostra StackOverflowError
+A documentacao interativa completa esta no Swagger UI. Abaixo o resumo de todos os endpoints.
 
-Ciclo de auto-referencia ao injetar `AuthenticationManager` no `AuthServiceImpl`. A autenticacao no login e feita diretamente via `PasswordEncoder.matches()`, sem `AuthenticationManager`.
+### 5.1. Autenticacao (visao geral)
 
-### Endpoints externos: "URI is not absolute"
+Todos os endpoints exceto `/api/auth/**` e `/actuator/health` exigem token JWT no header:
+```
+Authorization: Bearer <token>
+```
 
-Os clientes HTTP (`ReasoningApiClient`, `MediaApiClient`) montam a URI absoluta a partir da URL completa do `.env` com `UriComponentsBuilder.fromHttpUrl(apiUrl).queryParam("key", apiKey)`.
+No Swagger UI, clique no botao **Authorize** (cadeado) e cole o token JWT. O token persiste entre recarregamentos.
 
-### TTS: "Connection refused" para http://tts:PORTA
+---
 
-O container Kokoro escuta na **8880**. Garanta que o mapeamento de portas, o healthcheck e a variavel `TTS_API_URL` no `docker-compose.yml` apontem todos para `8880`. Apos alterar env, recrie o container:
+### 5.2. Saude
+
+`GET /actuator/health` — **Publico**
+
+Retorna status da aplicacao e dependencias (DB, Redis, disco).
 
 ```bash
-docker compose up -d --force-recreate app
+curl http://localhost:8080/actuator/health
 ```
 
-### Gemini: 404 "model is not found"
+---
 
-Modelo descontinuado. Use `gemini-2.5-flash` (ou verifique os modelos vigentes em https://ai.google.dev/gemini-api/docs/models) em `REASONING_API_URL` e `MEDIA_API_URL`.
+### 5.3. Autenticacao (endpoints)
 
-### Docker build usando cache antigo
+#### Registrar usuario
 
-Apos editar `pom.xml` ou arquivos fonte, se o build reutilizar camadas em cache e nao refletir as mudancas, force o rebuild completo:
+`POST /api/auth/register` — **Publico**
 
-```bash
-docker compose build --no-cache app
-```
-
-## Como Executar
-
-### Docker (ambiente completo)
-
-```bash
-docker compose up
-```
-
-Sobe o app (`http://localhost:8080`), PostgreSQL 16, Redis 7 e Kokoro TTS (`http://localhost:8880`). O profile ativo e `prod`.
-
-### Desenvolvimento local (H2 + Redis)
-
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-mvn spring-boot:run -Dspring.profiles.active=dev
-```
-
-Usa H2 em memoria e Redis externo (`localhost:6379`). Flyway desabilitado, JPA cria as tabelas automaticamente.
-
-### Compilar
-
-```bash
-mvn clean compile
-```
-
-### Testar
-
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-& "C:\Users\Guilherme\Tools\apache-maven-3.9.9\bin\mvn.cmd" test
-```
-
-## Estrutura do Projeto
-
-```
-src/main/java/com/ezlearning/
-  config/
-    CorsConfig.java              # Configuracao CORS
-    SecurityConfig.java          # Seguranca, whitelist Swagger/auth, JWT filter, BCrypt
-    JwtAuthenticationFilter.java # Filtro de autenticacao JWT (ignora Swagger/api-docs/auth)
-    RestTemplateConfig.java      # Configuracao de RestClient/RestTemplate (timeouts, baseUrl)
-    AiApiProperties.java         # Properties das APIs (reasoning, media, tts)
-    OpenApiConfig.java           # Configuracao OpenAPI/Swagger (security scheme Bearer JWT)
-    WebSocketConfig.java         # Configuracao WebSocket/STOMP
-    RateLimitingInterceptor.java # Rate limiting (Redis)
-  controller/
-    AuthController.java          # Endpoints /api/auth/*
-    HealthController.java        # Endpoint /actuator/health
-    MediaController.java         # Endpoints /api/media/*
-    ChatController.java          # Endpoints /api/chat/reason e /api/chat/stream
-    UploadController.java        # Endpoints /api/uploads/*
-    UploadExceptionHandler.java  # Tratamento de erros de upload
-    TtsController.java           # Endpoints /api/tts/*
-    PdfExportController.java     # Endpoint /api/chat/{messageId}/export
-  integration/
-    MediaApiClient.java          # Cliente HTTP para API externa de midias (Gemini)
-    ReasoningApiClient.java      # Cliente HTTP para API de raciocinio (Gemini)
-    TtsApiClient.java            # Cliente HTTP para Kokoro TTS
-  service/
-    AuthService.java             # Interface de autenticacao
-    AuthServiceImpl.java         # Implementacao (registro, login via PasswordEncoder, refresh)
-    JwtService.java              # Geracao e validacao de tokens JWT
-    MediaService.java            # Interface de geracao de midias
-    MediaServiceImpl.java        # Implementacao (geracao, cache Redis, fallback BD)
-    ReasoningService.java        # Interface de raciocinio
-    ReasoningServiceImpl.java    # Implementacao (orquestracao, parsing)
-    TtsService.java              # Interface de sintese de audio
-    TtsServiceImpl.java          # Implementacao (Kokoro TTS)
-    UploadService.java           # Interface de upload
-    UploadServiceImpl.java       # Implementacao (upload, thumbnail)
-    PdfExportService.java        # Interface de exportacao PDF
-    PdfExportServiceImpl.java    # Implementacao (Apache PDFBox, cache SHA-256)
-  websocket/
-    ChatWebSocketHandler.java    # Handler de mensagens WebSocket
-    JwtHandshakeInterceptor.java # Interceptor JWT no handshake WebSocket
-    UserChannelInterceptor.java  # Interceptor de canal para usuario
-  repository/
-    GeneratedMediaRepository.java
-    UploadedImageRepository.java
-    UserRepository.java
-  model/
-    GeneratedMedia.java          # Entidade generated_media
-    UploadedImage.java           # Entidade uploaded_images
-    User.java                    # Entidade users
-    dto/                         # DTOs de request/response
-  EzLearningApplication.java
-
-src/main/resources/
-  application.yml
-  application-dev.yml
-  application-prod.yml
-  db/migration/
-    V1__create_users_table.sql
-    V2__create_uploaded_images_table.sql
-    V3__create_history_tables.sql
-    V4__create_generated_media_table.sql
-```
-
-## API Endpoints
-
-### Saude
-
-| Metodo | Rota               | Descricao    | Autenticacao |
-|--------|--------------------|--------------|--------------|
-| GET    | `/actuator/health` | Health check | Nao          |
-
-### Autenticacao
-
-| Metodo | Rota                 | Descricao                        | Autenticacao |
-|--------|----------------------|----------------------------------|--------------|
-| POST   | `/api/auth/register` | Cadastro de usuario              | Nao          |
-| POST   | `/api/auth/login`    | Login (retorna access + refresh) | Nao          |
-| POST   | `/api/auth/refresh`  | Renova access token via refresh  | Nao          |
-
-**Register Request:**
 ```json
+// Request
 {
-  "name": "string",
-  "email": "string",
-  "password": "string"
+  "name": "string (required)",
+  "email": "string (required)",
+  "password": "string (required)"
 }
-```
 
-**Login Request:**
-```json
+// Response 200
 {
-  "email": "string",
-  "password": "string"
-}
-```
-
-**Login Response (register, login, refresh):**
-```json
-{
-  "token": "string (access token)",
-  "refreshToken": "string (refresh token)",
+  "token": "string (JWT access token, valido 1h)",
+  "refreshToken": "string (JWT refresh token, valido 7d)",
   "expiresIn": 3600,
   "user": {
     "name": "string",
@@ -436,23 +151,228 @@ src/main/resources/
 }
 ```
 
-**Refresh Request:**
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Usuario","email":"user@exemplo.com","password":"senha1234"}'
+```
+
+#### Login
+
+`POST /api/auth/login` — **Publico**
+
 ```json
+// Request
+{
+  "email": "string (required)",
+  "password": "string (required)"
+}
+
+// Response 200 (mesmo formato do register)
+```
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@exemplo.com","password":"senha1234"}'
+```
+
+#### Refresh token
+
+`POST /api/auth/refresh` — **Publico**
+
+```json
+// Request
 {
   "refreshToken": "string"
 }
+
+// Response 200 (novo par access + refresh)
 ```
 
-### Upload de Imagens
+---
 
-| Metodo | Rota                         | Descricao                 | Autenticacao |
-|--------|------------------------------|---------------------------|--------------|
-| POST   | `/api/uploads`               | Upload de imagem (<=5MB)  | Sim          |
-| GET    | `/api/uploads/{id}`          | Servir imagem original    | Sim          |
-| GET    | `/api/uploads/{id}/thumbnail`| Servir thumbnail          | Sim          |
+### 5.4. Chat / Raciocinio
 
-**Upload Response:**
+#### Enviar pergunta
+
+`POST /api/chat/reason` — **JWT**
+
 ```json
+// Request
+{
+  "question": "string (required)",
+  "context": "string (opcional)"
+}
+
+// Response 200
+{
+  "answer": "string (resposta completa do modelo)",
+  "steps": ["string (passo 1)", "string (passo 2)", ...],
+  "confidence": 0.95 (double)
+}
+```
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@exemplo.com","password":"senha1234"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+curl -s http://localhost:8080/api/chat/reason \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Explique como resolver equacoes do segundo grau"}'
+```
+
+#### Streaming (SSE)
+
+`GET /api/chat/stream?question=...&context=...` — **JWT**
+
+Eventos SSE:
+```
+event: thinking
+data: {"type": "thinking"}
+
+event: result
+data: {"type": "result", "data": {"answer": "...", "steps": [...], "confidence": 0.0}}
+
+event: complete
+data: {"type": "complete"}
+```
+
+```bash
+curl -N http://localhost:8080/api/chat/stream?question=Quanto+e+2%2B2%3F \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+### 5.5. Sintese de Audio (TTS)
+
+#### Gerar audio
+
+`POST /api/tts/synthesize` — **JWT**
+
+```json
+// Request
+{
+  "text": "string (required)",
+  "voice": "string (opcional, default: 'pt')"
+}
+
+// Response 200
+{
+  "audioUrl": "/api/tts/{id}",
+  "durationSeconds": 0.0,
+  "format": "mp3"
+}
+```
+
+Vozes disponiveis: `pt` (portugues Brasil), `en` (ingles).
+
+```bash
+curl -s http://localhost:8080/api/tts/synthesize \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Ola, bem-vindo ao EzLearning!","voice":"pt"}'
+```
+
+#### Baixar audio
+
+`GET /api/tts/{id}` — **JWT**
+
+Retorna `audio/mpeg` (MP3). Use o `id` retornado pelo endpoint de sintese.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/tts/<ID> \
+  -o audio.mp3
+```
+
+---
+
+### 5.6. Diagramas
+
+#### Gerar diagrama
+
+`POST /api/media/diagram` — **JWT**
+
+```json
+// Request
+{
+  "prompt": "string (required)"
+}
+
+// Response 200
+{
+  "id": "uuid",
+  "description": "/api/media/{id}",
+  "imageUrl": "/api/media/{id}/image"
+}
+```
+
+```bash
+curl -s http://localhost:8080/api/media/diagram \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"diagrama dos passos da formula de Bhaskara"}'
+```
+
+#### Gerar midia avancada
+
+`POST /api/media/generate` — **JWT**
+
+```json
+// Request
+{
+  "prompt": "string (required)",
+  "style": "string",
+  "diagramType": "string",
+  "options": {}
+}
+
+// Response 200
+{
+  "id": "uuid",
+  "url": "/api/media/{id}",
+  "thumbnailUrl": "string ou null",
+  "originalName": "string ou null",
+  "size": 0,
+  "mimeType": "string"
+}
+```
+
+#### Baixar midia
+
+`GET /api/media/{id}` — **JWT**
+
+Retorna o conteudo binario da midia com o MIME type armazenado.
+
+#### Baixar imagem do diagrama
+
+`GET /api/media/{id}/image` — **JWT**
+
+Retorna `image/png` — renderizacao do diagrama Mermaid pelo Kroki.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8080/api/media/<ID>/image \
+  -o diagrama.png
+```
+
+---
+
+### 5.7. Upload de Imagens
+
+#### Enviar imagem
+
+`POST /api/uploads` — **JWT**
+
+Multipart form-data com campo `file`. Formatos aceitos: `image/jpeg`, `image/png`. Maximo: 5 MB.
+
+```json
+// Response 200
 {
   "id": "uuid",
   "url": "/api/uploads/{id}",
@@ -462,174 +382,168 @@ src/main/resources/
 }
 ```
 
-**Restricoes:**
-- Formatos aceitos: `image/jpeg`, `image/png`
-- Tamanho maximo: 5MB
-
-### Geracao de Midias
-
-| Metodo | Rota                    | Descricao                              | Autenticacao |
-|--------|-------------------------|----------------------------------------|--------------|
-| POST   | `/api/media/generate`   | Gera imagem a partir de prompt textual | Sim          |
-| POST   | `/api/media/diagram`    | Gera diagrama a partir de prompt       | Sim          |
-| GET    | `/api/media/{id}`       | Serve o conteudo binario da midia      | Sim          |
-| GET    | `/api/media/{id}/image` | Serve a imagem PNG do diagrama         | Sim          |
-
-**Generate Request:**
-```json
-{
-  "prompt": "um diagrama de classes UML",
-  "style": "colorido",
-  "diagramType": "flowchart",
-  "options": {
-    "theme": "dark",
-    "resolution": "1920x1080"
-  }
-}
+```bash
+curl -X POST http://localhost:8080/api/uploads \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@imagem.png"
 ```
 
-**Diagram Request:**
+#### Baixar imagem
+
+`GET /api/uploads/{id}` — **JWT**
+
+Retorna a imagem original.
+
+#### Baixar thumbnail
+
+`GET /api/uploads/{id}/thumbnail` — **JWT**
+
+Retorna thumbnail da imagem enviada.
+
+---
+
+### 5.8. Exportacao PDF
+
+#### Exportar duvida em PDF
+
+`POST /api/chat/{messageId}/export` — **JWT**
+
 ```json
+// Request
 {
-  "prompt": "diagrama de arquitetura em camadas"
-}
-```
-
-**Comportamento:**
-- O prompt e hasheado (SHA-256) para servir como chave de cache no Redis
-- Em caso de erro na API externa, busca no banco de dados (fallback)
-- Midias nao referenciadas sao removidas apos 1 hora (limpeza agendada)
-
-### Raciocinio
-
-| Metodo | Rota               | Descricao                                      | Autenticacao |
-|--------|--------------------|------------------------------------------------|--------------|
-| POST   | `/api/chat/reason` | Envia pergunta e recebe resposta com raciocinio | Sim          |
-
-**Reason Request:**
-```json
-{
-  "question": "Como resolver uma equacao de segundo grau?",
-  "context": "ax^2 + bx + c = 0 (opcional)"
-}
-```
-
-**Reason Response:**
-```json
-{
-  "answer": "Para resolver uma equacao de segundo grau, use a formula de Bhaskara...",
-  "steps": [
-    "Identifique os coeficientes a, b e c",
-    "Calcule o discriminante: Delta = b^2 - 4ac",
-    "Aplique a formula: x = (-b +- sqrt(Delta)) / 2a"
-  ],
-  "confidence": 0.95
-}
-```
-
-**Comportamento:**
-- Retry com backoff exponencial (3 tentativas: 1s / 2s / 4s)
-- Timeout de leitura: 30s
-- Erros 4xx sem retry; 5xx e timeout disparam retry
-
-### Sintese de Audio
-
-| Metodo | Rota                  | Descricao                    | Autenticacao |
-|--------|-----------------------|------------------------------|--------------|
-| POST   | `/api/tts/synthesize` | Sintetiza texto em audio     | Sim          |
-| GET    | `/api/tts/{id}`       | Serve arquivo de audio       | Sim          |
-
-**Synthesize Request:**
-```json
-{
-  "text": "Texto para sintetizar",
-  "voice": "af_heart"
-}
-```
-
-Voice padrao: `af_heart`. Alternativas: `am_michelle`, `af_bella`.
-
-### Exportacao PDF
-
-| Metodo | Rota                           | Descricao                        | Autenticacao |
-|--------|--------------------------------|----------------------------------|--------------|
-| POST   | `/api/chat/{messageId}/export` | Exporta duvida + resposta em PDF | Sim          |
-
-**Export Request:**
-```json
-{
-  "question": "Como resolver uma equacao de segundo grau?",
-  "context": "ax^2 + bx + c = 0",
-  "answer": "Para resolver, use a formula de Bhaskara...",
-  "steps": [
-    "Identifique os coeficientes a, b e c",
-    "Calcule o discriminante: Delta = b^2 - 4ac",
-    "Aplique a formula: x = (-b +- sqrt(Delta)) / 2a"
-  ],
+  "question": "string",
+  "context": "string",
+  "answer": "string",
+  "steps": ["string", ...],
   "confidence": 0.95,
-  "mediaIds": ["uuid-do-diagrama"]
+  "mediaIds": ["uuid", ...]
 }
+
+// Response 200: application/pdf
+// Content-Disposition: attachment; filename="duvida-YYYY-MM-DD.pdf"
 ```
 
-**Export Response:** `application/pdf` com `Content-Disposition: attachment; filename="duvida-YYYY-MM-DD.pdf"`
+> O `{messageId}` e um UUID gerado pelo cliente.
 
-### Comunicacao em Tempo Real
-
-| Metodo | Rota                                  | Descricao                        | Autenticacao                    |
-|--------|---------------------------------------|----------------------------------|---------------------------------|
-| GET    | `/api/chat/stream?question=&context=` | SSE streaming de raciocinio      | Sim                             |
-| WS     | `/ws` (STOMP over SockJS)             | WebSocket para chat em tempo real| Sim (token via query param)     |
-
-**SSE Events:**
-```
-event: thinking
-data: {"type": "thinking"}
-
-event: result
-data: {"type": "result", "data": {"answer": "...", "steps": [], "confidence": 0.0}}
-
-event: complete
-data: {"type": "complete"}
+```bash
+curl -s http://localhost:8080/api/chat/$(uuidgen)/export \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question":"Como resolver equacoes do segundo grau?",
+    "context":"ax^2 + bx + c = 0",
+    "answer":"Use a formula de Bhaskara...",
+    "steps":["1. Identifique a, b, c","2. Calcule delta"],
+    "confidence":0.95,
+    "mediaIds":[]
+  }' \
+  -o duvida.pdf
 ```
 
-**WebSocket:**
-- Conectar em `/ws` com `?token={jwt}`
-- Enviar para `/app/chat`: `{"question": "...", "context": "..."}`
-- Receber eventos em `/topic/chat/{userId}`
+---
 
-### Rate Limiting
+## 6. Comandos uteis
 
-- Maximo 5 requisicoes/minuto por usuario (WebSocket e SSE)
-- Implementado com Redis (contador com TTL de 60s)
-- Resposta 429 quando excedido
+```bash
+# Subir tudo
+docker compose up -d
 
-### Documentacao Interativa
+# Rebuildar apos alteracoes no codigo
+docker compose build --no-cache app
+docker compose up -d --force-recreate app
 
-- Swagger UI: `/swagger-ui/index.html`
-- OpenAPI JSON: `/v3/api-docs`
+# Ver logs
+docker compose logs -f app
 
-> O botao **Authorize** no Swagger UI permite colar o JWT (obtido via `/api/auth/login`) e testar os endpoints autenticados diretamente pela interface. O esquema de seguranca Bearer e definido em `OpenApiConfig`.
+# Health check
+curl -s http://localhost:8080/actuator/health | python3 -m json.tool
 
-## Variaveis de Ambiente
+# Listar modelos Ollama
+docker exec ezlearning-ollama ollama list
+```
 
-| Variavel               | Default                                                                 | Descricao                        |
-|------------------------|-------------------------------------------------------------------------|----------------------------------|
-| `DATABASE_URL`         | `jdbc:postgresql://localhost:5432/ezlearning`                           | URL do PostgreSQL                |
-| `DATABASE_USER`        | `ezlearning`                                                            | Usuario do banco                 |
-| `DATABASE_PASSWORD`    | `ezlearning`                                                            | Senha do banco                   |
-| `REDIS_HOST`           | `localhost`                                                             | Host do Redis                    |
-| `JWT_SECRET`           | -- (obrigatorio)                                                        | Chave secreta para assinar JWT   |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:3000`                           | Origens permitidas CORS          |
-| `REASONING_API_URL`    | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` | URL da API de raciocinio |
-| `REASONING_API_KEY`    | -- (obrigatorio)                                                        | Chave da API Google Gemini       |
-| `MEDIA_API_URL`        | `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` | URL da API de midia     |
-| `MEDIA_API_KEY`        | -- (obrigatorio)                                                        | Chave da API Google Gemini       |
-| `TTS_API_URL`          | `http://tts:8880/v1/audio/speech`                                       | URL do Kokoro TTS                |
+## 7. Estrutura do Projeto
 
-## APIs Externas
+```
+EzLearning/
+├── docker-compose.yml          # Orquestracao de todos os servicos
+├── Dockerfile                  # Build multi-stage da aplicacao Java
+├── pom.xml                     # Dependencias Maven
+├── .env / .env.example         # Variaveis de ambiente
+│
+├── edge-tts/                   # Servico TTS (gTTS / Google)
+│   ├── main.py                 # API FastAPI com endpoint /v1/audio/speech
+│   └── requirements.txt        # Dependencias Python (gtts, fastapi, uvicorn)
+│
+├── src/main/
+│   ├── java/com/ezlearning/
+│   │   ├── EzLearningApplication.java
+│   │   ├── config/
+│   │   │   ├── AiApiProperties.java           # Properties das APIs externas
+│   │   │   ├── CorsConfig.java                # CORS para frontend
+│   │   │   ├── JwtAuthenticationFilter.java   # Filtro JWT
+│   │   │   ├── OpenApiConfig.java             # Swagger + seguranca Bearer
+│   │   │   ├── RateLimitingInterceptor.java   # Rate limiting via Redis
+│   │   │   ├── RestTemplateConfig.java        # RestClient/RestTemplate beans
+│   │   │   ├── SecurityConfig.java            # Spring Security + whitelist
+│   │   │   └── WebSocketConfig.java           # STOMP/SockJS
+│   │   ├── controller/
+│   │   │   ├── AuthController.java            # /api/auth/*
+│   │   │   ├── ChatController.java            # /api/chat/reason, /api/chat/stream
+│   │   │   ├── HealthController.java          # /actuator/health
+│   │   │   ├── MediaController.java           # /api/media/*
+│   │   │   ├── PdfExportController.java       # /api/chat/{id}/export
+│   │   │   ├── TtsController.java             # /api/tts/*
+│   │   │   ├── UploadController.java          # /api/uploads/*
+│   │   │   └── UploadExceptionHandler.java    # Tratamento de erros de upload
+│   │   ├── integration/
+│   │   │   ├── MediaApiClient.java            # Templates de diagramas Mermaid
+│   │   │   ├── ReasoningApiClient.java        # Cliente HTTP Ollama
+│   │   │   └── TtsApiClient.java              # Cliente HTTP gTTS
+│   │   ├── model/
+│   │   │   ├── GeneratedMedia.java            # Entidade generated_media
+│   │   │   ├── UploadedImage.java             # Entidade uploaded_images
+│   │   │   ├── User.java                      # Entidade users
+│   │   │   └── dto/                           # DTOs de request/response
+│   │   │       ├── LoginRequest/Response.java
+│   │   │       ├── RegisterRequest.java
+│   │   │       ├── ReasoningRequest/Response.java
+│   │   │       ├── MediaRequest/Response.java
+│   │   │       ├── MediaGenerationRequest/Response.java
+│   │   │       ├── TtsRequest/Response.java
+│   │   │       ├── PdfExportRequest.java
+│   │   │       ├── UploadResponse.java
+│   │   │       └── ErrorResponse.java
+│   │   ├── repository/                        # Spring Data JPA repositories
+│   │   ├── service/                           # Logica de negocio
+│   │   │   ├── AuthServiceImpl.java           # Registro, login, refresh JWT
+│   │   │   ├── JwtService.java                # Geracao/validacao de tokens
+│   │   │   ├── MediaServiceImpl.java          # Diagramas (templates + Kroki)
+│   │   │   ├── PdfExportServiceImpl.java      # Exportacao PDF (PDFBox)
+│   │   │   ├── ReasoningServiceImpl.java      # Orquestracao chat Ollama
+│   │   │   ├── TtsServiceImpl.java            # Sintese de audio via gTTS
+│   │   │   └── UploadServiceImpl.java         # Upload + thumbnail
+│   │   └── websocket/
+│   │       ├── ChatWebSocketHandler.java      # Handler WebSocket
+│   │       ├── JwtHandshakeInterceptor.java   # JWT no handshake
+│   │       └── UserChannelInterceptor.java    # Canal por usuario
+│   │
+│   └── resources/
+│       ├── application.yml                    # Config default (dev)
+│       ├── application-dev.yml                # Perfil dev (H2)
+│       ├── application-prod.yml               # Perfil prod (PostgreSQL)
+│       └── db/migration/                      # Migrations Flyway
+│           ├── V1__create_users_table.sql
+│           ├── V2__create_uploaded_images_table.sql
+│           ├── V3__create_history_tables.sql
+│           └── V4__create_generated_media_table.sql
+```
 
-| API                  | Finalidade                           | Provedor | Autenticacao          |
-|----------------------|--------------------------------------|----------|-----------------------|
-| Gemini 2.5 Flash     | Raciocinio logico                    | Google   | API Key (query param) |
-| Gemini 2.5 Flash     | Geracao de midias (imagens/diagramas)| Google   | API Key (query param) |
-| Kokoro TTS           | Sintese de voz (texto para audio)    | Local    | Nao requerida         |
+## 8. Desenvolvimento local (sem Docker)
+
+```bash
+# Precisa de Redis externo em localhost:6379
+mvn spring-boot:run -Dspring.profiles.active=dev
+```
+
+Usa H2 em memoria e desabilita Flyway. Apenas o app Java — os demais servicos (Ollama, TTS, Kroki) precisam rodar separadamente.
