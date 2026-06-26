@@ -53,3 +53,5 @@ docker-compose.override.yml
 ### Opencode ###
 .github
 Kokoro-FastAPI/
+__pycache__/
+*.pyc
