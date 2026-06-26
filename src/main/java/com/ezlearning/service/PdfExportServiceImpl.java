@@ -215,6 +215,12 @@ public class PdfExportServiceImpl implements PdfExportService {
 
         private static String sanitizeForHelvetica(String text) {
             return text
+                    .replaceAll("\\*\\*(.+?)\\*\\*", "$1")
+                    .replaceAll("\\*(.+?)\\*", "$1")
+                    .replaceAll("#{1,6}\\s*", "")
+                    .replaceAll("\\n\\s*[-*]\\s+", ". ")
+                    .replaceAll("\\n\\s*\\d+\\.\\s+", ". ")
+                    .replaceAll("[*_{}\\[\\]|>`~\\\\]", "")
                     .replace("\r\n", "\n")
                     .replace("\r", "\n")
                     .replace("\n", " ")

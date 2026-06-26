@@ -1,141 +1,146 @@
 package com.ezlearning.integration;
 
-import com.ezlearning.config.AiApiProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 @Component
 public class MediaApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(MediaApiClient.class);
 
-    private static final String MODEL = "qwen2.5-coder:3b";
+    private static final Map<String, Map<String, String>> TOPIC_PATTERNS = Map.of(
+            "equacao.*segundo.*grau|equacao.*quadratica|bhaskara|2o grau",
+            Map.of("title", "Equações do 2º Grau",
+                    "concept1", "Identificar a, b, c",
+                    "concept2", "Delta = b² - 4ac",
+                    "concept3", "Delta >= 0?",
+                    "result1", "Duas raízes reais",
+                    "result2", "Sem raízes reais",
+                    "formula", "x = (-b ± √Δ) / 2a"),
 
-    private static final String SYSTEM_PROMPT = """
-            You are a diagram generator. Given a description, output ONLY valid Mermaid diagram code.
-            Rules:
-            - Output raw Mermaid code only. No markdown fences, no backticks, no explanations.
-            - Use valid Mermaid syntax (graph, flowchart, sequenceDiagram, classDiagram, etc).
-            - Keep node labels short and clear.
-            - Do not include any text before or after the diagram code.
-            """;
+            "trigonometria|seno|cosseno|tangente|pitagoras",
+            Map.of("title", "Trigonometria",
+                    "concept1", "Triângulo Retângulo",
+                    "concept2", "Catetos e Hipotenusa",
+                    "concept3", "Ângulo conhecido?",
+                    "result1", "Aplicar razões trigonométricas",
+                    "result2", "Aplicar Teorema de Pitágoras",
+                    "formula", "a² = b² + c²"),
 
-    private final RestClient restClient;
+            "funcao|grafico|dominio|imagem",
+            Map.of("title", "Funções Matemáticas",
+                    "concept1", "Domínio",
+                    "concept2", "Contradomínio e Imagem",
+                    "concept3", "É função?",
+                    "result1", "Sim: cada x tem um único y",
+                    "result2", "Não: relação não é função",
+                    "formula", "f(x) = y")
+    );
 
-    public MediaApiClient(
-            @Qualifier("reasoningRestClient") RestClient restClient,
-            AiApiProperties properties) {
-        this.restClient = restClient;
-    }
+    private static final String DIAGRAM_TEMPLATE = """
+            flowchart TD
+                A["TITLE"] --> B[Passo 1: CONCEPT1]
+                B --> C[Passo 2: CONCEPT2]
+                C --> D["CONCEPT3"]
+                D -->|Sim| E["RESULT1"]
+                D -->|Não| F["RESULT2"]
+                C --> G["FORMULA"]
+                G --> H[Aplicar e Calcular Raízes]
+
+                style A fill:#2196F3,stroke:#1976D2,color:#fff
+                style B fill:#4CAF50,stroke:#388E3C,color:#fff
+                style C fill:#4CAF50,stroke:#388E3C,color:#fff
+                style D fill:#FF9800,stroke:#F57C00,color:#fff
+                style E fill:#9C27B0,stroke:#7B1FA2,color:#fff
+                style F fill:#f44336,stroke:#D32F2F,color:#fff
+                style G fill:#FFC107,stroke:#FFA000,color:#000
+                style H fill:#2196F3,stroke:#1976D2,color:#fff
+                """;
+
+    private static final String MINIMAL_TEMPLATE = """
+            flowchart TD
+                A["TITLE"] --> B[Passo 1: CONCEPT1]
+                B --> C[Passo 2: CONCEPT2]
+                C --> D["Aplicar FORMULA"]
+                D --> E["Resultado"]
+
+                style A fill:#2196F3,stroke:#1976D2,color:#fff
+                style B fill:#4CAF50,stroke:#388E3C,color:#fff
+                style C fill:#4CAF50,stroke:#388E3C,color:#fff
+                style D fill:#FF9800,stroke:#F57C00,color:#fff
+                style E fill:#9C27B0,stroke:#7B1FA2,color:#fff
+                """;
+
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
     public String generateDiagram(String prompt) {
-        var chatRequest = new ChatRequest(
-                MODEL,
-                List.of(
-                        new Message("system", SYSTEM_PROMPT),
-                        new Message("user", prompt)
-                )
+        String template = selectTemplate(prompt);
+        Map<String, String> terms = extractTerms(prompt);
+        String filled = fillTemplate(template, terms);
+        log.debug("Generated diagram template for prompt ({} chars)", filled.length());
+        return filled;
+    }
+
+    private String selectTemplate(String prompt) {
+        String lower = prompt.toLowerCase();
+        if (lower.contains("explic") || lower.contains("passo") || lower.contains("como resolver")
+                || lower.contains("formula") || lower.contains("steps") || lower.contains("how to")) {
+            return DIAGRAM_TEMPLATE;
+        }
+        return MINIMAL_TEMPLATE;
+    }
+
+    private Map<String, String> extractTerms(String prompt) {
+        String lower = prompt.toLowerCase();
+
+        for (var entry : TOPIC_PATTERNS.entrySet()) {
+            if (Pattern.compile(entry.getKey()).matcher(lower).find()) {
+                log.debug("Matched topic pattern: {}", entry.getKey());
+                return entry.getValue();
+            }
+        }
+
+        String title = extractTitle(prompt);
+        return Map.of(
+                "title", title,
+                "concept1", "Identificar os elementos",
+                "concept2", "Calcular os valores",
+                "concept3", "Verificar as condições",
+                "result1", "Solução encontrada",
+                "result2", "Revisar os dados",
+                "formula", "Expressão matemática"
         );
-
-        log.debug("Sending diagram request to Ollama ({})", MODEL);
-
-        var chatResponse = restClient.post()
-                .uri("")
-                .body(chatRequest)
-                .retrieve()
-                .body(ChatResponse.class);
-
-        String mermaid = extractText(chatResponse);
-        mermaid = cleanMermaid(mermaid);
-        log.debug("Received Mermaid code from Ollama ({} chars)", mermaid.length());
-        return mermaid;
     }
 
-    private String cleanMermaid(String raw) {
-        if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException("Resposta vazia do Ollama");
-        }
-        String text = raw.strip();
-
-        // Se houver bloco cercado ```mermaid ... ```, extrai o conteudo dele
-        int fenceStart = text.indexOf("```");
-        if (fenceStart >= 0) {
-            int contentStart = text.indexOf('\n', fenceStart);
-            int fenceEnd = text.indexOf("```", fenceStart + 3);
-            if (contentStart > 0 && fenceEnd > contentStart) {
-                text = text.substring(contentStart + 1, fenceEnd).strip();
+    private String extractTitle(String prompt) {
+        String cleaned = prompt.replaceAll("(?i)(diagrama|fluxograma|mapa mental|mindmap|flowchart|gerar|criar|desenhar)\\s*(de |do |da |sobre |um |uma )?", "");
+        cleaned = cleaned.replaceAll("(?i)(explicando|explicar|mostrando|mostrar|passo a passo|step by step)\\s*", "");
+        cleaned = WHITESPACE.matcher(cleaned).replaceAll(" ").trim();
+        if (cleaned.length() > 60) cleaned = cleaned.substring(0, 57) + "...";
+        if (cleaned.isEmpty()) cleaned = "Diagrama Educacional";
+        String[] words = cleaned.split(" ");
+        StringBuilder title = new StringBuilder();
+        for (String w : words) {
+            if (!w.isEmpty()) {
+                title.append(Character.toUpperCase(w.charAt(0)));
+                if (w.length() > 1) title.append(w.substring(1));
+                title.append(" ");
             }
         }
-
-        // Palavras-chave que iniciam um diagrama Mermaid valido
-        String[] starters = {
-                "graph ", "graph\n", "flowchart ", "sequenceDiagram",
-                "classDiagram", "stateDiagram", "erDiagram", "journey",
-                "gantt", "pie", "mindmap", "timeline"
-        };
-
-        int diagramStart = -1;
-        for (String s : starters) {
-            int idx = text.indexOf(s);
-            if (idx >= 0 && (diagramStart < 0 || idx < diagramStart)) {
-                diagramStart = idx;
-            }
-        }
-        if (diagramStart > 0) {
-            text = text.substring(diagramStart);
-        }
-
-        // Corta linhas finais que claramente nao sao diagrama (texto explicativo)
-        var lines = text.split("\n");
-        var sb = new StringBuilder();
-        for (String line : lines) {
-            String trimmed = line.strip();
-            if (trimmed.startsWith("**") || trimmed.startsWith("##")
-                    || trimmed.toLowerCase().startsWith("explanation")
-                    || trimmed.toLowerCase().startsWith("this ")
-                    || trimmed.startsWith("```")) {
-                break;
-            }
-            sb.append(line).append("\n");
-        }
-
-        String cleaned = sb.toString().strip();
-
-        // Escapa parenteses dentro de labels quadradas [texto(com)parenteses]
-        // para evitar que o parser Mermaid/Kroki interprete como modificador de forma
-        cleaned = cleaned.replaceAll("\\[([^\\]]*?)\\(([^\\]]*?)\\)([^\\]]*?)\\]",
-                "[\"$1($2)$3\"]");
-
-        // Remove caracteres nao-imprimiveis e Unicode problematicos
-        cleaned = cleaned.replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]", "");
-
-        if (cleaned.isBlank()) {
-            throw new IllegalArgumentException("Código Mermaid vazio após limpeza");
-        }
-        return cleaned;
+        return title.toString().trim();
     }
 
-    private String extractText(ChatResponse response) {
-        if (response == null || response.choices() == null || response.choices().isEmpty()) {
-            throw new IllegalArgumentException("Resposta vazia do Ollama");
+    private String fillTemplate(String template, Map<String, String> terms) {
+        String result = template;
+        for (var entry : terms.entrySet()) {
+            result = result.replaceAll("(?i)" + Pattern.quote(entry.getKey()), entry.getValue());
         }
-        var message = response.choices().getFirst().message();
-        if (message == null || message.content() == null || message.content().isBlank()) {
-            throw new IllegalArgumentException("Resposta sem conteúdo do Ollama");
-        }
-        return message.content();
-    }
-
-    public record ChatRequest(String model, List<Message> messages) {}
-
-    public record Message(String role, String content) {}
-
-    public record ChatResponse(List<Choice> choices) {
-        public record Choice(Message message) {}
+        return result;
     }
 }

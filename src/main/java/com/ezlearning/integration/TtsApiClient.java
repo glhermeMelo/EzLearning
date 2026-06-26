@@ -23,9 +23,9 @@ public class TtsApiClient {
     }
 
     public byte[] synthesize(String text, String voice) {
-        var request = new KokoroTtsRequest("kokoro", text, voice);
+        var request = new KokoroTtsRequest("gtts", text, voice);
 
-        log.debug("Sending TTS request to Kokoro API, text length: {} chars, voice: {}", text.length(), voice);
+        log.debug("Sending TTS request to gTTS API, text length: {} chars, voice: {}", text.length(), voice);
 
         byte[] audio = restClient.post()
                 .uri(ttsUrl)
@@ -37,7 +37,7 @@ public class TtsApiClient {
             throw new RuntimeException("Resposta vazia da API de TTS");
         }
 
-        log.debug("Received audio response from Kokoro API, size: {} bytes", audio.length);
+        log.debug("Received audio response from gTTS API, size: {} bytes", audio.length);
 
         return audio;
     }

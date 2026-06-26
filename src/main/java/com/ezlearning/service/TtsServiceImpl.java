@@ -45,12 +45,12 @@ public class TtsServiceImpl implements TtsService {
             throw new IllegalArgumentException("O texto não pode estar vazio");
         }
 
-        String effectiveVoice = voice != null ? voice : "af_heart";
+        String effectiveVoice = voice != null ? voice : "pt";
 
         byte[] audio = ttsApiClient.synthesize(text, effectiveVoice);
 
         var id = UUID.randomUUID();
-        var fileName = id + ".wav";
+        var fileName = id + ".mp3";
         var targetPath = audioDir.resolve(fileName);
 
         try {
@@ -60,7 +60,7 @@ public class TtsServiceImpl implements TtsService {
             throw new RuntimeException("Erro ao salvar arquivo de áudio: " + e.getMessage(), e);
         }
 
-        return new TtsResponse("/api/tts/" + id, 0.0, "wav");
+        return new TtsResponse("/api/tts/" + id, 0.0, "mp3");
     }
 
     @Override
@@ -69,7 +69,7 @@ public class TtsServiceImpl implements TtsService {
             throw new IllegalArgumentException("O texto não pode estar vazio");
         }
 
-        String effectiveVoice = voice != null ? voice : "af_heart";
+        String effectiveVoice = voice != null ? voice : "pt";
 
         byte[] audio = ttsApiClient.synthesize(text, effectiveVoice);
 
@@ -83,7 +83,7 @@ public class TtsServiceImpl implements TtsService {
 
     @Override
     public byte[] loadAudio(String id) {
-        var targetPath = audioDir.resolve(id + ".wav");
+        var targetPath = audioDir.resolve(id + ".mp3");
         if (!Files.exists(targetPath)) {
             throw new IllegalArgumentException("Áudio não encontrado: " + id);
         }

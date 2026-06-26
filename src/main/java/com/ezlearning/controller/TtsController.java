@@ -34,7 +34,7 @@ public class TtsController {
     public ResponseEntity<byte[]> serveAudio(@PathVariable String id) {
         var data = ttsService.loadAudio(id);
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("audio/wav"))
+                .contentType(MediaType.parseMediaType("audio/mpeg"))
                 .body(data);
     }
 }

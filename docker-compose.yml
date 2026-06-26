@@ -17,6 +17,8 @@ services:
       - MEDIA_API_KEY=${MEDIA_API_KEY}
       - TTS_API_URL=http://tts:8880/v1/audio/speech
       - KROKI_URL=http://kroki:8000
+    volumes:
+      - app_uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -62,24 +64,24 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # 🔥 TTS CONTAINERIZADO CORRETAMENTE (SEM DOCKERFILE)
+  # 🔥 gTTS (Google Text-to-Speech) - Voz pt-BR nativa gratuita
   tts:
     image: python:3.11-slim
     container_name: ezlearning-tts
     working_dir: /app
     volumes:
-      - ./Kokoro-FastAPI:/app
+      - ./edge-tts:/app
     ports:
       - "8880:8880"
-    environment:
-      - UV_VENV_CLEAR=1
     command: >
-      sh -c "apt-get update &&
-             apt-get install -y curl bash git build-essential cmake gcc g++ &&
-             pip install uv &&
-             uv venv &&
-             uv pip install -e . &&
-             bash start-cpu.sh"
+      sh -c "pip install -r requirements.txt &&
+             uvicorn main:app --host 0.0.0.0 --port 8880"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   ollama:
@@ -120,3 +122,4 @@ services:
 volumes:
   pgdata:
   ollama_data:
+  app_uploads:
