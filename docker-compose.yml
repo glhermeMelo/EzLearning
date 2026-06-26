@@ -10,11 +10,11 @@ services:
       - DATABASE_USER=ezlearning
       - DATABASE_PASSWORD=ezlearning
       - REDIS_HOST=cache
-      - JWT_SECRET=${JWT_SECRET}
-      - REASONING_API_URL=${REASONING_API_URL}
-      - REASONING_API_KEY=${REASONING_API_KEY}
-      - MEDIA_API_URL=${MEDIA_API_URL}
-      - MEDIA_API_KEY=${MEDIA_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-ezlearning-dev-secret-key-change-in-production}
+      - REASONING_API_URL=${REASONING_API_URL:-http://ollama:11434/v1/chat/completions}
+      - REASONING_API_KEY=${REASONING_API_KEY:-}
+      - MEDIA_API_URL=${MEDIA_API_URL:-http://ollama:11434/v1/chat/completions}
+      - MEDIA_API_KEY=${MEDIA_API_KEY:-}
       - TTS_API_URL=http://tts:8880/v1/audio/speech
       - KROKI_URL=http://kroki:8000
     volumes:

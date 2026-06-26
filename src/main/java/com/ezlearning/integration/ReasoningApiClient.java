@@ -33,20 +33,26 @@ public class ReasoningApiClient {
 
         var chatRequest = new ChatRequest(
                 MODEL,
-                List.of(new Message("user", prompt))
+                List.of(new Message("user", prompt)),
+                false
         );
 
         log.debug("Sending request to Ollama ({})", MODEL);
 
-        var chatResponse = restClient.post()
-                .uri("")
-                .body(chatRequest)
-                .retrieve()
-                .body(ChatResponse.class);
+        try {
+            var chatResponse = restClient.post()
+                    .uri("")
+                    .body(chatRequest)
+                    .retrieve()
+                    .body(ChatResponse.class);
 
-        String markdown = extractText(chatResponse);
-        log.debug("Received response from Ollama ({} chars)", markdown.length());
-        return new ReasoningResponse(markdown, List.of(), 0.0);
+            String markdown = extractText(chatResponse);
+            log.debug("Received response from Ollama ({} chars)", markdown.length());
+            return new ReasoningResponse(markdown, List.of(), 0.0);
+        } catch (Exception e) {
+            log.error("Failed to get response from Ollama: {}", e.getMessage());
+            return new ReasoningResponse("Erro ao consultar a IA: " + e.getMessage(), List.of(), 0.0);
+        }
     }
 
     private String extractText(ChatResponse response) {
@@ -61,7 +67,7 @@ public class ReasoningApiClient {
     }
 
     // ---- Request (formato OpenAI / Ollama) ----
-    public record ChatRequest(String model, List<Message> messages) {}
+    public record ChatRequest(String model, List<Message> messages, boolean stream) {}
 
     public record Message(String role, String content) {}
 

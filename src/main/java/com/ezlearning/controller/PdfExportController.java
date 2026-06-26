@@ -27,6 +27,23 @@ public class PdfExportController {
         this.pdfExportService = pdfExportService;
     }
 
+    @PostMapping("/export")
+    public ResponseEntity<byte[]> exportPdfSimple(@RequestBody PdfExportRequest request) {
+        var messageId = UUID.randomUUID();
+        var reasoningRequest = new ReasoningRequest(request.question(), request.context());
+        var reasoningResponse = new ReasoningResponse(request.answer(), request.steps(), request.confidence());
+
+        byte[] pdfBytes = pdfExportService.exportChat(messageId, reasoningRequest, reasoningResponse, request.mediaIds());
+
+        var dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        var filename = "duvida-" + dateStr + ".pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
+    }
+
     @PostMapping("/{messageId}/export")
     public ResponseEntity<byte[]> exportPdf(
             @PathVariable UUID messageId,
